@@ -724,7 +724,8 @@ $('#phOK').onclick=()=>{const g=groups.find(x=>x.id===activeGroupId);if(!g)retur
  * - The JSON must be serialized with CRLF line endings and NO extra newline at the end.
  * - Inside the JSON, "description" must be "" (the human description is appended as trailer).
  * - Trailer is a single 0x00 byte if description is empty; otherwise, trailer is raw UTF‑8 description bytes.
- * - L must include: 24-byte fixed header + JSON bytes + trailer bytes (0x00 or desc UTF‑8).
+ * - L must include: 24-byte fixed header + JSON bytes + 1 if description is empty.
+ * - L must NOT include the description content and its length marker if the description is none empty.
  */
 const FIXED_HEADER_PREFIX = [
   0x11,0x46,0x79,0x74,0x6f,0x74,0x72,0x6f,0x6e,0x20,0x50,0x72,0x6f,0x74,0x6f,0x63,
@@ -834,7 +835,7 @@ function buildFytBinary(data){
   });
   const jsonBytes = encodeUTF8(jsonCRLF);
 
-  // Trailer = [ULEB128(descLen)] + [desc bytes]   (no backward compatibility path)
+  // Trailer = [ULEB128(descLen)] + [desc bytes]
   const descBytes = encodeUTF8(data.description || "");
   const lenBytes = encodeULEB128(descBytes.length);
   const trailer  = new Uint8Array(lenBytes.length + descBytes.length);
