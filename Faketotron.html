@@ -713,7 +713,7 @@ $('#phOK').onclick=()=>{const g=groups.find(x=>x.id===activeGroupId);if(!g)retur
 
 /**
  * IMPORTANT — FYT header calculation (verified against machine files):
- * Let L = total file length in bytes (including 24-byte header, JSON with CRLF, and trailer).
+ * Let L = total file length in bytes (including 24-byte header, JSON with CRLF, and trailer IF Description is empty).
  * Let T = L + 104.
  * Let q = floor(T / 128).
  * hi = q - 1
