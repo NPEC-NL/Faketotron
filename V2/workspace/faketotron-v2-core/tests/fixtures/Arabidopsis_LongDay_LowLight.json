@@ -1,0 +1,248 @@
+{
+  "description": "Arabidopsis: Long Day, Low light",
+  "repeat": 2147483647,
+  "logic": "09:00:00",
+  "sections": [
+    {
+      "parts": [
+        {
+          "group-name": "CO2",
+          "type": "co2",
+          "union-tag": "fytotron",
+          "unit": "ppm",
+          "vars": [
+            "CO2_Set"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 300,
+              "duration": "1.00:00:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Cool White",
+          "type": "white",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "CoolWhite1"
+          ],
+          "phases": [
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 0,
+              "end": 20
+            },
+            {
+              "type": "const",
+              "value": 20,
+              "duration": "15:30:00"
+            },
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 20,
+              "end": 0
+            },
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "07:30:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Cool White 2",
+          "type": "white",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "CoolWhite2"
+          ],
+          "phases": [
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 0,
+              "end": 16
+            },
+            {
+              "type": "const",
+              "value": 16,
+              "duration": "15:30:00"
+            },
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 16,
+              "end": 0
+            },
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "07:30:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Deep-Red",
+          "type": "deep-red",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "DeepRed1"
+          ],
+          "phases": [
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 0,
+              "end": 16
+            },
+            {
+              "type": "const",
+              "value": 16,
+              "duration": "15:30:00"
+            },
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 16,
+              "end": 0
+            },
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "07:30:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Deep-Red 2",
+          "type": "deep-red",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "DeepRed2"
+          ],
+          "phases": [
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 0,
+              "end": 14
+            },
+            {
+              "type": "const",
+              "value": 14,
+              "duration": "15:30:00"
+            },
+            {
+              "type": "ramp",
+              "duration": "00:30:00",
+              "step": "00:00:05",
+              "start": 14,
+              "end": 0
+            },
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "07:30:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Far-Red",
+          "type": "far-red",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "FarRed1"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "1.00:00:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Far-Red 2",
+          "type": "far-red",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "FarRed2"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "1.00:00:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Humidity",
+          "type": "humidity",
+          "union-tag": "fytotron",
+          "unit": "percent",
+          "vars": [
+            "Rh_Set"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 65,
+              "duration": "1.00:00:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Hydroponics",
+          "type": "hydroponie",
+          "union-tag": "fytotron",
+          "unit": "",
+          "vars": [
+            "Run1",
+            "Run2"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 0,
+              "duration": "1.00:00:00"
+            }
+          ]
+        },
+        {
+          "group-name": "Temperature",
+          "type": "temperature",
+          "union-tag": "fytotron",
+          "unit": "celsius",
+          "vars": [
+            "T_Set"
+          ],
+          "phases": [
+            {
+              "type": "const",
+              "value": 210,
+              "duration": "1.00:00:00"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
