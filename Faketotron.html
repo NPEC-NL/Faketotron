@@ -1307,6 +1307,8 @@ function buildGroupsFromLoaded(data){
     const varsMachine = part.vars || [];
     const dispVars = varsMachine.map(mv => (INV_MACHINE_VAR[dispType] && INV_MACHINE_VAR[dispType][mv]) ? INV_MACHINE_VAR[dispType][mv] : mv);
     dispVars.forEach(v => assigned[dispType]?.add(v));
+    varsMachine.forEach(mv => assigned[dispType]?.add(mv));  // use MACHINE names here
+
 
     const rawPhases = part.phases || [];
     const phases = rawPhases.map(p=>{
@@ -1351,13 +1353,25 @@ function buildGroupsFromLoaded(data){
     newGroups.push({ id:crypto.randomUUID(), type:dispType, name, vars:dispVars, phases });
   });
 
-  // Build unassigned pool for each type
+  // Build unassigned pool for each type — auto-detect INVENTORY namespace (display vs machine)
   const newUnassigned = {};
   TAB_ORDER.forEach(t=>{
-    const all = INVENTORY[t].slice();
-    const used = assigned[t] ? Array.from(assigned[t]) : [];
+    const all = (INVENTORY[t] || []).slice();          // may be display or machine names
+    const mvMap = MACHINE_VAR[t] || {};                // display -> machine
+    const dispSet = new Set(Object.keys(mvMap));       // display namespace
+    const machSet = new Set(Object.values(mvMap));     // machine namespace
+
+    // Heuristic: if every INVENTORY entry is a known machine var (or at least some are and none are display),
+    // treat INVENTORY as machine namespace; otherwise as display.
+    const inventoryLooksMachine =
+      all.length > 0 && (all.every(v => machSet.has(v)) || (!all.some(v => dispSet.has(v)) && all.some(v => machSet.has(v))));
+
+    const usedDisp = assigned[t] ? Array.from(assigned[t]) : [];  // we collected DISPLAY names earlier
+    const used = inventoryLooksMachine ? usedDisp.map(d => mvMap[d] || d) : usedDisp;
+
     newUnassigned[t] = all.filter(v => !used.includes(v));
   });
+
 
   return { groups:newGroups, unassigned:newUnassigned };
 }
