@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<title>Faketotron Client - Protocol Editor (v1.5beta)</title>
+<title>Faketotron Client - Protocol Editor (v1.4 Stab)</title>
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
 <link rel="icon", type="image/png", href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAYdJREFUWEftVjFuwzAMpN+QLWiWol/oLwxkzR/6j74lawD7FZ26dQiyJMjWN6iQAAoUS9lHJamXZnNM8Y68I+WOFv51C+PTP4HWDgSionv6GVa2hUDYXze0W58jSDwfQgjUdSmVO5/7QAR8PvT0/vqZSETwcRyp7/s/IxCBEonTdqBhGCS4WwpvByJAbr0QulkKD4EEzvp/P73Q6nIsfNAiBUogGy+2/uPtKxe/uhxT9UIKfgflhoK08ZiE7EAyRoMhUQLZeOx+HkEutwW8ZWzYhHrRJBmEQR+6iGRy99hZzGG2KlB2wyNlkQY5WGs7Qnw2/2xABcUi1ZQLOSR11m3nd5YBIX8gBNIIGg63POD2BULAuvvlfcAjqHPdtQNTXWBgd/WeRSS1loC6eitucloQCawEi36SIfMPx0x1oFal3gHyHpBXsRX3i9gcAekT1Af5gkQ+UucISJPppVOrtjDp/roJu/W5ioMQ0CNozTf6n1sCSXBqxFBfuAjATr4lsHUP3IJZnP0B6KuYITM8RzwAAAAASUVORK5CYII=">
 <style>
@@ -15,10 +15,8 @@
   .row{display:flex;gap:12px;padding:0 12px 12px;height:calc(100% - 48px)}
   .left{width:800px;background:var(--panel);border:1px solid var(--b);display:flex;flex-direction:column}
   .right{width:360px;margin-left:auto;background:var(--panel);border:1px solid var(--b);display:flex;flex-direction:column}
-  .toolbar{height:auto;min-height:44px;background:var(--bar);border-bottom:1px solid var(--b);display:flex;flex-wrap:wrap;align-items:center;padding:6px 10px;gap:12px;justify-content:flex-end;}
-  .toolbar-row{width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+  .toolbar{height:44px;background:var(--bar);border-bottom:1px solid var(--b);display:flex;align-items:center;padding:0 10px;gap:12px;justify-content: flex-end;}
   .toolbar .btn:first-child {margin-right:180px;min-width:120px;}
-  .toolbar-row .btn:first-child {margin-right:0px;min-width:120px;}
   .btn{min-width:85px;height:28px;border:1px solid var(--b);background:linear-gradient(#fff,#e6e9ee);border-radius:4px;cursor:pointer}
   .btn.small{min-width:75px;height:24px}
   .btn:disabled{opacity:.5;cursor:not-allowed}
@@ -30,7 +28,7 @@
   .workspace{flex:1;background:#e6e6e6;margin:8px;border:1px solid var(--b);overflow:auto}
 
   .ph-list{background:#fff;border:1px solid var(--b)}
-  .ph-row{display:grid;grid-template-columns:25px 60px 90px 120px 1fr 120px;align-items:center;border-bottom:1px solid #dde2ea;padding:8px 10px;min-height:48px}
+  .ph-row{display:grid;grid-template-columns:40px 120px 120px 1fr 120px;align-items:center;border-bottom:1px solid #dde2ea;padding:8px 10px;min-height:48px}
   .ph-row.tall{min-height:110px}
   .ph-row.header{background:#f2f5f9;font-weight:600}
   .ph-row.header div:last-child {padding-left: 50%};
@@ -96,18 +94,12 @@
         <div class="field" id="groupDuration">--</div>
         <button class="btn" id="btnClearGroup" disabled>Clear Group</button>
         <button class="btn" id="btnAddPhase" disabled>Add Phase</button>
-        <div class="toolbar-row">
-        <button class="btn small" id="btnCopyPhases" disabled>Copy phase(s)</button>
-        <button class="btn small" id="btnPastePhases" disabled>Paste phase(s)</button>
-        <button class="btn small" id="btnMoveSelUp" disabled>Move selected up</button>
-        <button class="btn small" id="btnMoveSelDown" disabled>Move selected down</button>
-        </div>
       </div>
       <div id="groupTabs" class="group-tabs" style="display:none;"></div>
       <div class="workspace" id="workspace">
         <div id="phaseArea">
           <div class="ph-list" id="phList" style="display:none">
-            <div class="ph-row header"><div><input id="phSelAll" type="checkbox" /></div><div>#</div><div>Duration</div><div>Phase</div><div>Summary</div><div>Actions</div></div>
+            <div class="ph-row header"><div>#</div><div>Duration</div><div>Phase</div><div>Summary</div><div>Actions</div></div>
           </div>
           <div class="placeholder" id="blankState">Create a NEW protocol to initialize default groups.</div>
         </div>
@@ -415,9 +407,6 @@ function applyProfile(name){
 
 
 let protocol=null; let groups=[]; let unassigned={}; let activeGroupId=null; let vmSelectedGroupId=null; let insertAfterIndex=null;
-let selectedPhaseIdx = new Set();   // indices in the active group's phases
-let phaseClipboard = null;          // array of deep-copied phases
-
 const $=s=>document.querySelector(s), $$=s=>Array.from(document.querySelectorAll(s));
 
 /* ============================================================
@@ -526,7 +515,7 @@ function renderTabs(){
     const t=document.createElement('div');
     t.className='gtab'+(g.id===activeGroupId?' active':'');
     t.textContent=g.name;
-    t.onclick=()=>{activeGroupId=g.id;clearSelection();renderTabs();renderPhases();updateGroupDurationField();};
+    t.onclick=()=>{activeGroupId=g.id;renderTabs();renderPhases();updateGroupDurationField();};
     bar.appendChild(t);
   });
   updateGroupDurationField();
@@ -565,115 +554,32 @@ function buildSummary(varType,p){
   }
   return wrap;
 }
-
 function renderPhases(){
-  const list = $('#phList');
-  list.querySelectorAll('.ph-row.data').forEach(n => n.remove());
+  const list=$('#phList');list.querySelectorAll('.ph-row.data').forEach(n=>n.remove());
+  const g=groups.find(x=>x.id===activeGroupId);if(!g)return;g.phases=g.phases||[];
+  g.phases.forEach((p,i)=>{
+    const r=document.createElement('div');r.className='ph-row data'+((p.type==='sin'||p.type==='cloud')?' tall':'');r.draggable=true;r.dataset.idx=i;
+    r.addEventListener('dragstart',e=>{r.classList.add('dragging');e.dataTransfer.setData('text/plain',i);});
+    r.addEventListener('dragend',()=>r.classList.remove('dragging'));
+    r.addEventListener('dragover',e=>{e.preventDefault();});
+    r.addEventListener('drop',e=>{e.preventDefault();const from=parseInt(e.dataTransfer.getData('text/plain'));const to=i;reorderPhase(from,to);});
 
-  const g = groups.find(x => x.id === activeGroupId);
-  if(!g) return;
-  g.phases = g.phases || [];
+    const cIdx=document.createElement('div');cIdx.textContent=i+1;
+    const cDur=document.createElement('div');cDur.className='clickable';cDur.textContent=normalizeDurationStr(p.duration||'01:00:00');cDur.onclick=()=>{insertAfterIndex=i;openEditPhase(p);} 
+    const cType=document.createElement('div');cType.innerHTML=`<span class="pill">${labelPhase(p.type)}</span>`;cType.className='clickable';cType.onclick=()=>{insertAfterIndex=i;openEditPhase(p);} 
+    const cSum=document.createElement('div');cSum.className='clickable';cSum.onclick=()=>{insertAfterIndex=i;openEditPhase(p);} 
+    cSum.appendChild(buildSummary(g.type,p));
 
-  // update header "select all" state
-  const selAll = $('#phSelAll');
-  if(selAll){
-    selAll.onchange = () => {
-      selectedPhaseIdx.clear();
-      if(selAll.checked){
-        g.phases.forEach((_, i) => selectedPhaseIdx.add(i));
-      }
-      renderPhases();
-      updatePhaseToolsState();
-    };
-    selAll.checked = (g.phases.length>0 && selectedPhaseIdx.size === g.phases.length);
-    selAll.indeterminate = (selectedPhaseIdx.size>0 && selectedPhaseIdx.size < g.phases.length);
-  }
+    const cAct=document.createElement('div');cAct.className='ph-actions';
+    const addB=document.createElement('button');addB.className='btn small';addB.textContent='add below';addB.onclick=()=>{insertAfterIndex=i;openAddPhase();};
+    const del=document.createElement('button');del.className='btn small';del.textContent='remove';del.onclick=()=>{g.phases.splice(i,1);renderPhases();updateGroupDurationField();updateOverallDuration();};
+    cAct.appendChild(del);cAct.appendChild(addB);
 
-  g.phases.forEach((p, i) => {
-    const r = document.createElement('div');
-    r.className = 'ph-row data' + ((p.type==='sin'||p.type==='cloud')?' tall':'');
-    r.draggable = true;
-    r.dataset.idx = i;
-
-    r.addEventListener('dragstart', e => { r.classList.add('dragging'); e.dataTransfer.setData('text/plain', i); });
-    r.addEventListener('dragend',   () => r.classList.remove('dragging'));
-    r.addEventListener('dragover',  e => { e.preventDefault(); });
-    r.addEventListener('drop',      e => { e.preventDefault(); const from = parseInt(e.dataTransfer.getData('text/plain')); const to = i; reorderPhase(from, to); });
-
-    // (1) selection checkbox
-    const cSel = document.createElement('div');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = selectedPhaseIdx.has(i);
-    cb.onchange = () => {
-      if(cb.checked) selectedPhaseIdx.add(i); else selectedPhaseIdx.delete(i);
-      renderPhases();
-      updatePhaseToolsState();
-    };
-    cSel.appendChild(cb);
-
-    // (2) index
-    const cIdx = document.createElement('div'); cIdx.textContent = i+1;
-
-    // (3) duration
-    const cDur = document.createElement('div');
-    cDur.className='clickable';
-    cDur.textContent = normalizeDurationStr(p.duration||'01:00:00');
-    cDur.onclick = () => { insertAfterIndex = i; openEditPhase(p); };
-
-    // (4) type
-    const cType=document.createElement('div');
-    cType.innerHTML = `<span class="pill">${labelPhase(p.type)}</span>`;
-    cType.className = 'clickable';
-    cType.onclick = () => { insertAfterIndex = i; openEditPhase(p); };
-
-    // (5) summary
-    const cSum=document.createElement('div');
-    cSum.className='clickable';
-    cSum.onclick = () => { insertAfterIndex = i; openEditPhase(p); };
-    cSum.appendChild(buildSummary(g.type, p));
-
-    // (6) actions
-    const cAct=document.createElement('div'); cAct.className='ph-actions';
-    const addB=document.createElement('button'); addB.className='btn small'; addB.textContent='add below';
-    addB.onclick=()=>{ insertAfterIndex=i; openAddPhase(); };
-    const del=document.createElement('button'); del.className='btn small'; del.textContent='remove';
-    del.onclick=()=>{ g.phases.splice(i,1); reindexSelectionAfterDelete(i); renderPhases(); updateGroupDurationField(); updateOverallDuration(); };
-
-    cAct.appendChild(del); cAct.appendChild(addB);
-
-    r.appendChild(cSel); r.appendChild(cIdx); r.appendChild(cDur); r.appendChild(cType); r.appendChild(cSum); r.appendChild(cAct);
+    r.appendChild(cIdx);r.appendChild(cDur);r.appendChild(cType);r.appendChild(cSum);r.appendChild(cAct);
     list.appendChild(r);
   });
-
-  updatePhaseToolsState();
 }
-function reindexSelectionAfterDelete(deletedIdx){
-  const next = new Set();
-  selectedPhaseIdx.forEach(i => { if(i<deletedIdx) next.add(i); else if(i>deletedIdx) next.add(i-1); });
-  selectedPhaseIdx = next;
-}
-function clearSelection(){ selectedPhaseIdx.clear(); const sa=$('#phSelAll'); if(sa){ sa.checked=false; sa.indeterminate=false; } }
-
-function reorderPhase(from, to){
-  const g = groups.find(x=>x.id===activeGroupId);
-  if(!g) return;
-  const item = g.phases.splice(from,1)[0];
-  g.phases.splice(to,0,item);
-
-  // remap selection
-  const next = new Set();
-  selectedPhaseIdx.forEach(i=>{
-    if(i===from){ next.add(to); }
-    else if(from < to && i>from && i<=to){ next.add(i-1); }
-    else if(to < from && i>=to && i<from){ next.add(i+1); }
-    else { next.add(i); }
-  });
-  selectedPhaseIdx = next;
-
-  renderPhases();
-}
-
+function reorderPhase(from,to){const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const item=g.phases.splice(from,1)[0];g.phases.splice(to,0,item);renderPhases();}
 
 /* ============================================================
    VARIABLE MANAGER
@@ -789,259 +695,12 @@ function readPhaseFromForm(varType){
     const fmr=Number($('#phFR').value); if(!Number.isFinite(fmr)){alert('Fluctuation mean ratio must be a number');return null;}; const __fmr_round= Math.round(fmr*100)/100; const fmr_rounded = __fmr_round;
     const fv=Number($('#phFV').value); if(!Number.isInteger(fv)){alert('Fluctuation var must be an integer');return null;};
     // Cloud Attenuation is user-controlled; round to two decimals
-    const drop = Math.round(Number($('#phDrop').value)*100)/100;
+const drop = Math.round(Number($('#phDrop').value)*100)/100;
     const step=(($('#phStep')?.value)||RAMP_STEP);
     return {type:'cloud',amplitude:amp,offset:off,cloud_density:den,cloud_position:pos,cloud_duration_mean:cMean,cloud_duration_var:cVar,fluctuation_mean_ratio:(typeof fmr_rounded!=='undefined'? fmr_rounded : fmr),fluctuation_var:fv,cloud_drop_coeff: (Math.round((drop)*100)/100),duration:dur,step:step};
   }
   return null;
 }
-
-function deepCopy(obj){ return JSON.parse(JSON.stringify(obj)); }
-function getActiveGroup(){ return groups.find(x=>x.id===activeGroupId); }
-
-// Behavior when values are out-of-range: 'clamp' | 'reject' | 'warn'
-let PASTE_VALIDATION_MODE = 'clamp';
-
-function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
-
-function validatePhaseForTarget(varType, phase, mode='clamp'){
-  const rng = RANGES[varType];
-  if(!rng) return { ok:true, fixed: phase, issues: [] };
-
-  // humidity cloud exception (same as buildPhaseFields UI hint)
-  const effRangeForCloud = (varType==='Humidity')
-    ? { min: 0, max: 100, scale: rng.scale }   // amplitude/offset use 0–100 for humidity
-    : rng;
-
-  const isTemp = (varType === 'Temperature');
-  const mustInt = (k)=> !isTemp; // Temperature allows decimals in UI, stored ×10 here
-
-  const issues = [];
-  const out = deepCopy(phase);
-
-  const handle = (key, lo, hi, requireInt=true, target='rng')=>{
-    if(out[key] == null) return;
-    let v = Number(out[key]);
-    if(!Number.isFinite(v)){
-      issues.push(`${key} not a number`);
-      if(mode==='reject') return false;
-      return true; // leave as-is for warn
-    }
-    if(requireInt && !Number.isInteger(v)){
-      issues.push(`${key} must be an integer`);
-      if(mode==='reject') return false;
-      if(mode==='clamp'){ v = Math.round(v); }
-    }
-    if(v < lo || v > hi){
-      if(mode==='reject'){ issues.push(`${key} ${v} out of [${lo}, ${hi}]`); return false; }
-      if(mode==='clamp'){ const nv = clamp(v, lo, hi); issues.push(`${key} ${v} → ${nv}`); v = nv; }
-      if(mode==='warn'){ issues.push(`${key} ${v} outside [${lo}, ${hi}]`); }
-    }
-    out[key] = v;
-    return true;
-  };
-
-  const checkDur = (k)=>{
-    if(out[k]==null) return true;
-    const n = normalizeDurationStr(out[k]);
-    if(!n){ issues.push(`${k} invalid duration`); return mode!=='reject'; }
-    out[k]=n; return true;
-  };
-
-  // Validate per type
-  if(out.type === 'const'){
-    if(!handle('value', rng.min, rng.max, mustInt('value'))) return {ok:false, fixed: out, issues};
-  }
-  else if(out.type === 'ramp'){
-    if(!checkDur('duration')) return {ok:false, fixed: out, issues};
-    if(!handle('start', rng.min, rng.max, mustInt('start'))) return {ok:false, fixed: out, issues};
-    if(!handle('end',   rng.min, rng.max, mustInt('end')))   return {ok:false, fixed: out, issues};
-    // keep step as-is (fixed in UI)
-  }
-  else if(out.type === 'sin'){
-    if(!checkDur('duration')) return {ok:false, fixed: out, issues};
-    if(!checkDur('period'))   return {ok:false, fixed: out, issues};
-    if(!checkDur('phaseOffset')) return {ok:false, fixed: out, issues};
-    if(!handle('min', rng.min, rng.max, mustInt('min'))) return {ok:false, fixed: out, issues};
-    if(!handle('max', rng.min, rng.max, mustInt('max'))) return {ok:false, fixed: out, issues};
-    // swap if inverted
-    if(Number(out.min) > Number(out.max)){
-      if(mode==='reject'){ issues.push('min > max'); return {ok:false, fixed: out, issues}; }
-      issues.push(`swapped min/max ${out.min}/${out.max}`);
-      const t = out.min; out.min = out.max; out.max = t;
-    }
-  }
-  else if(out.type === 'cloud'){
-    if(!checkDur('duration')) return {ok:false, fixed: out, issues};
-    // fixed fields present in UI:
-    // amplitude/offset against effRangeForCloud:
-    if(!handle('amplitude', effRangeForCloud.min, effRangeForCloud.max, mustInt('amplitude'))) return {ok:false, fixed: out, issues};
-    if(!handle('offset',    effRangeForCloud.min, effRangeForCloud.max, mustInt('offset')))    return {ok:false, fixed: out, issues};
-    // density/position: 0–100 integers
-    if(!handle('cloud_density', 0, 100, true))  return {ok:false, fixed: out, issues};
-    if(!handle('cloud_position', 0, 100, true)) return {ok:false, fixed: out, issues};
-    // integer mins/vars
-    if(!handle('cloud_duration_mean', -1e9, 1e9, true)) return {ok:false, fixed: out, issues};
-    if(!handle('cloud_duration_var',  -1e9, 1e9, true)) return {ok:false, fixed: out, issues};
-    if(typeof out.fluctuation_mean_ratio !== 'undefined'){
-      const fmr = Number(out.fluctuation_mean_ratio);
-      if(!Number.isFinite(fmr)){
-        issues.push('fluctuation_mean_ratio not a number'); if(mode==='reject') return {ok:false,fixed:out,issues};
-      }else{
-        // keep as-is; UI rounds to 2 decimals, but we won't force rounding here
-        out.fluctuation_mean_ratio = Math.round(fmr*100)/100;
-      }
-    }
-    if(typeof out.fluctuation_var !== 'undefined'){
-      const fv = Number(out.fluctuation_var);
-      if(!Number.isInteger(fv)){
-        if(mode==='reject'){ issues.push('fluctuation_var must be an integer'); return {ok:false,fixed:out,issues}; }
-        issues.push('fluctuation_var coerced to integer'); out.fluctuation_var = Math.round(fv);
-      }
-    }
-    if(typeof out.cloud_drop_coeff !== 'undefined'){
-      const cdc = Number(out.cloud_drop_coeff);
-      if(!Number.isFinite(cdc)){
-        issues.push('cloud_drop_coeff not a number'); if(mode==='reject') return {ok:false,fixed:out,issues};
-      }else{
-        out.cloud_drop_coeff = Math.round(cdc*100)/100;
-      }
-    }
-  }
-
-  return { ok: (mode!=='reject') || issues.length===0, fixed: out, issues };
-}
-
-function validateClipboardForTarget(varType, phases, mode='clamp'){
-  const fixed = [];
-  const issues = [];
-  let allOk = true;
-  phases.forEach((p, idx)=>{
-    const { ok, fixed: fp, issues: is } = validatePhaseForTarget(varType, p, mode);
-    if(is.length) is.forEach(m => issues.push(`Phase ${idx+1}: ${m}`));
-    if(!ok) allOk = false;
-    fixed.push(fp);
-  });
-  return { ok: allOk, fixed, issues };
-}
-
-
-function updatePhaseToolsState(){
-  const g = getActiveGroup();
-  const hasSel = selectedPhaseIdx.size > 0;
-  $('#btnCopyPhases').disabled = !hasSel;
-  $('#btnMoveSelUp').disabled  = !hasSel;
-  $('#btnMoveSelDown').disabled= !hasSel;
-  $('#btnPastePhases').disabled= !phaseClipboard || !g;
-  // update header checkbox indeterminate state
-  const sa = $('#phSelAll');
-  if(sa && g){
-    sa.checked = (g.phases.length>0 && selectedPhaseIdx.size === g.phases.length);
-    sa.indeterminate = (selectedPhaseIdx.size>0 && selectedPhaseIdx.size < g.phases.length);
-  }
-}
-
-function getSelectedBlocks(){
-  const idxs = [...selectedPhaseIdx].sort((a,b)=>a-b);
-  const blocks = [];
-  for(let i=0;i<idxs.length;){
-    const start = idxs[i];
-    let end = start;
-    i++;
-    while(i<idxs.length && idxs[i]===end+1){ end = idxs[i]; i++; }
-    blocks.push({start,end});
-  }
-  return blocks;
-}
-
-$('#btnCopyPhases').onclick = ()=>{
-  const g = getActiveGroup(); if(!g){return;}
-  if(selectedPhaseIdx.size===0){ alert('Select at least one phase.'); return; }
-  const ordered = [...selectedPhaseIdx].sort((a,b)=>a-b).map(i=>deepCopy(g.phases[i]));
-  phaseClipboard = ordered;
-  updatePhaseToolsState();
-};
-
-$('#btnPastePhases').onclick = ()=>{
-  const g = getActiveGroup(); if(!g || !phaseClipboard || phaseClipboard.length===0){ return; }
-  const varType = g.type; // e.g., "CO2", "Cool White", "Temperature", "Amber" (Daylight), etc.
-
-  // Validate against CURRENT profile limits (RANGES is rebuilt on applyProfile)
-  const { ok, fixed, issues } = validateClipboardForTarget(varType, phaseClipboard, PASTE_VALIDATION_MODE);
-
-  if(PASTE_VALIDATION_MODE === 'reject' && !ok){
-    alert('Paste aborted:\n\n' + issues.join('\n'));
-    return;
-  }
-  if(issues.length){
-    alert(
-      (PASTE_VALIDATION_MODE==='clamp' ? 'Pasted with corrections:' :
-       PASTE_VALIDATION_MODE==='warn'  ? 'Pasted with warnings:'    : 'Issues:') +
-      '\n\n' + issues.join('\n')
-    );
-  }
-
-  const after = (selectedPhaseIdx.size>0) ? Math.max(...selectedPhaseIdx) : (g.phases.length-1);
-  const at = Math.max(0, after+1);
-  const clones = deepCopy(fixed);
-  g.phases.splice(at, 0, ...clones);
-
-  clearSelection();
-  for(let k=0; k<clones.length; k++){ selectedPhaseIdx.add(at+k); }
-  renderPhases(); updateGroupDurationField(); updateOverallDuration();
-};
-
-
-$('#btnMoveSelUp').onclick = ()=>{
-  const g = getActiveGroup(); if(!g) return;
-  if(selectedPhaseIdx.size===0) return;
-
-  const blocks = getSelectedBlocks();
-  // Move each block up by one, left-to-right to avoid index interference
-  blocks.forEach(({start,end})=>{
-    if(start===0) return; // can't move past top
-    const before = g.phases.splice(start-1,1)[0]; // remove item before the block
-    g.phases.splice(end,0,before);                // insert it after the block
-  });
-
-  // Remap selection: only moved blocks shift -1
-  const next = new Set(selectedPhaseIdx);
-  blocks.forEach(({start,end})=>{
-    if(start===0) return;
-    for(let i=start;i<=end;i++) next.delete(i);
-    for(let i=start-1;i<=end-1;i++) next.add(i);
-  });
-  selectedPhaseIdx = next;
-
-  renderPhases(); updateGroupDurationField(); updateOverallDuration();
-};
-
-
-$('#btnMoveSelDown').onclick = ()=>{
-  const g = getActiveGroup(); if(!g) return;
-  if(selectedPhaseIdx.size===0) return;
-
-  const blocks = getSelectedBlocks();
-  // Process right-to-left so later blocks don't disturb earlier indices
-  for(let b=blocks.length-1; b>=0; b--){
-    const {start,end} = blocks[b];
-    if(end===g.phases.length-1) continue; // can't move past bottom
-    const after = g.phases.splice(end+1,1)[0]; // remove item after the block
-    g.phases.splice(start,0,after);            // insert it before the block
-  }
-
-  // Remap selection: only moved blocks shift +1
-  const next = new Set(selectedPhaseIdx);
-  blocks.forEach(({start,end})=>{
-    if(end===g.phases.length-1) return;
-    for(let i=start;i<=end;i++) next.delete(i);
-    for(let i=start+1;i<=end+1;i++) next.add(i);
-  });
-  selectedPhaseIdx = next;
-
-  renderPhases(); updateGroupDurationField(); updateOverallDuration();
-};
-
 
 
 $('#btnAddPhase').onclick=()=>{insertAfterIndex=null;openAddPhase();};
@@ -1215,8 +874,8 @@ function buildFytBinary(data){
 /* ============================================================
    BUTTONS / WIRES
    ============================================================ */
-$('#btnNew').onclick=()=>{clearSelection();protocol={description:"",repeat:2147483647,logic:"",sections:[{parts:[]}]};unassigned={};TAB_ORDER.forEach(t=>unassigned[t]=[]);createDefaultGroups();refreshUI();$('#dlgGroups').style.display='flex';};
-$('#btnErase').onclick=()=>{if(!confirm('Erase current protocol?'))return;protocol=null;groups=[];clearSelection();activeGroupId=null;unassigned={};refreshUI();};
+$('#btnNew').onclick=()=>{protocol={description:"",repeat:2147483647,logic:"",sections:[{parts:[]}]};unassigned={};TAB_ORDER.forEach(t=>unassigned[t]=[]);createDefaultGroups();refreshUI();$('#dlgGroups').style.display='flex';};
+$('#btnErase').onclick=()=>{if(!confirm('Erase current protocol?'))return;protocol=null;groups=[];activeGroupId=null;unassigned={};refreshUI();};
 $('#btnEraseTime').onclick=()=> $('#logic').value='- not set -';
 $('#btnSetInf').onclick=()=> $('#repeat').value='Infinitely times';
 $('#btnEditGroups').onclick=()=>{if(!protocol){alert('Create a NEW protocol first.');return;}$('#dlgGroups').style.display='flex';buildVM();};
@@ -1227,7 +886,6 @@ $('#btnClearGroup').onclick=()=>{
   if(!g) return;
   if(!confirm(`Clear all phases in "${g.name}"?`)) return;
   g.phases = [];
-  clearSelection();
   renderPhases();
   updateGroupDurationField();
   updateOverallDuration();
@@ -1307,8 +965,6 @@ function buildGroupsFromLoaded(data){
     const varsMachine = part.vars || [];
     const dispVars = varsMachine.map(mv => (INV_MACHINE_VAR[dispType] && INV_MACHINE_VAR[dispType][mv]) ? INV_MACHINE_VAR[dispType][mv] : mv);
     dispVars.forEach(v => assigned[dispType]?.add(v));
-    varsMachine.forEach(mv => assigned[dispType]?.add(mv));  // use MACHINE names here
-
 
     const rawPhases = part.phases || [];
     const phases = rawPhases.map(p=>{
@@ -1354,6 +1010,7 @@ function buildGroupsFromLoaded(data){
   });
 
   // Build unassigned pool for each type — auto-detect INVENTORY namespace (display vs machine)
+  // BUG FIX for Daylight type
   const newUnassigned = {};
   TAB_ORDER.forEach(t=>{
     const all = (INVENTORY[t] || []).slice();          // may be display or machine names
@@ -1370,7 +1027,7 @@ function buildGroupsFromLoaded(data){
     const used = inventoryLooksMachine ? usedDisp.map(d => mvMap[d] || d) : usedDisp;
 
     newUnassigned[t] = all.filter(v => !used.includes(v));
-  });
+});
 
 
   return { groups:newGroups, unassigned:newUnassigned };
