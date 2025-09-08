@@ -1,8 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend } from "recharts";
 
 // ===== Types =====
-type ChannelParams = { A: number; b: number; spectrum?: SpectrumPoint[] };
+type SpectrumPoint = { wavelength: number; A: number; b: number };
+
+type SpectrumSet = { id: string; name: string; points: SpectrumPoint[]; enabled: boolean };
+
+type ChannelParams = { A: number; b: number; /** legacy single-spectrum */ spectrum?: SpectrumPoint[]; /** multiple spectra that can be summed */ spectrumSets?: SpectrumSet[] };
+
 type ShelfName = string;
 type ChannelName = string;
 
@@ -12,7 +17,6 @@ type Preset = {
   shelves: Record<ShelfName, { channels: Record<ChannelName, ChannelParams> }>;
 };
 
-type SpectrumPoint = { wavelength: number; A: number; b: number };
 
 type SpectrumRow = { wavelength: number; value: number };
 
@@ -66,6 +70,7 @@ const DEFAULT_PRESETS: Preset[] = [
     shelves: {
       single: {
         channels: {
+          // Updated A/b from your latest file
           coolWhite: { A: 5.23046437365005, b: 10.034218074216131 },
           deepRed: { A: 0.4498239934475001, b: 0.30144158965002354 },
           farRed: { A: 0.7595520201830003, b: 2.293794068060037 },
@@ -80,12 +85,16 @@ function clamp(x: number, lo = 0, hi = 100) {
   return Math.max(lo, Math.min(hi, x));
 }
 
+function uid() {
+  return Math.random().toString(36).slice(2, 9);
+}
+
 function parseSpectrumCSV(csv: string): SpectrumPoint[] {
   // Accepts headers like: wavelength,wavelength_nm,lambda, A, b (case-insensitive)
   // and rows such as: 315.7,0.0123,0.0456
   const lines = csv.split(/\r?\n/).filter((l) => l.trim().length > 0);
   if (lines.length === 0) return [];
-  const header = lines[0].split(/,|\t/).map((h) => h.trim().toLowerCase());
+  const header = lines[0].split(/,|	/).map((h) => h.trim().toLowerCase());
   const idxLambda = header.findIndex((h) => ["wavelength", "wavelength_nm", "lambda", "nm"].includes(h));
   const idxA = header.findIndex((h) => h === "a" || h === "slope");
   const idxB = header.findIndex((h) => h === "b" || h === "intercept");
@@ -94,7 +103,7 @@ function parseSpectrumCSV(csv: string): SpectrumPoint[] {
   }
   const out: SpectrumPoint[] = [];
   for (let i = 1; i < lines.length; i++) {
-    const parts = lines[i].split(/,|\t/);
+    const parts = lines[i].split(/,|	/);
     if (parts.length < Math.max(idxLambda, idxA, idxB) + 1) continue;
     const wavelength = parseFloat(parts[idxLambda]);
     const A = parseFloat(parts[idxA]);
@@ -108,9 +117,9 @@ function parseSpectrumCSV(csv: string): SpectrumPoint[] {
   return out;
 }
 
-function integratePAR(rows: SpectrumRow[]) {
-  // Simple trapezoidal integration between 400–700 nm of irradiance curve
-  const filtered = rows.filter((r) => r.wavelength >= 400 && r.wavelength <= 700);
+function integrateRange(rows: SpectrumRow[], nmMin: number, nmMax: number) {
+  // Trapezoidal integration of spectral photon flux density (μE/m²/s/nm) over [nmMin, nmMax]
+  const filtered = rows.filter((r) => r.wavelength >= nmMin && r.wavelength <= nmMax);
   if (filtered.length < 2) return 0;
   let area = 0;
   for (let i = 1; i < filtered.length; i++) {
@@ -120,7 +129,21 @@ function integratePAR(rows: SpectrumRow[]) {
     const y1 = filtered[i].value;
     area += ((y0 + y1) / 2) * (x1 - x0);
   }
-  return area; // units: (μW/cm^2/nm) * nm = μW/cm^2 over 400–700
+  return area; // units: (μE/m²/s/nm)*nm = μE/m²/s
+}
+
+function sumSpectra(sets: SpectrumSet[], pct: number): SpectrumRow[] {
+  const map = new Map<number, number>();
+  for (const set of sets) {
+    if (!set.enabled) continue;
+    for (const pt of set.points) {
+      const v = pt.A * pct + pt.b;
+      map.set(pt.wavelength, (map.get(pt.wavelength) ?? 0) + v);
+    }
+  }
+  return Array.from(map.entries())
+    .sort((a, b) => a[0] - b[0])
+    .map(([wavelength, value]) => ({ wavelength, value }));
 }
 
 // ===== Main component =====
@@ -158,6 +181,20 @@ export default function LightTools() {
   const params: ChannelParams = twoShelfMode
     ? preset.shelves["high"]?.channels[channel] ?? { A: 1, b: 0 }
     : preset.shelves[shelf]?.channels[channel] ?? { A: 1, b: 0 };
+
+  // Migrate any legacy single-spectrum to spectrumSets
+  useEffect(() => {
+    const shelfKey = twoShelfMode ? "high" : shelf;
+    const ch = preset.shelves[shelfKey]?.channels[channel];
+    if (ch && ch.spectrum && !ch.spectrumSets) {
+      const next = [...presets];
+      const migrated: SpectrumSet = { id: uid(), name: `${channel} spectrum`, points: ch.spectrum, enabled: true };
+      next[presetIndex].shelves[shelfKey].channels[channel] = { ...ch, spectrumSets: [migrated], spectrum: undefined };
+      setPresets(next);
+      localStorage.setItem("ppfd.presets.v2", JSON.stringify(next));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel, shelf, twoShelfMode]);
 
   // PPFD for whichever shelf is selected in UI
   const selectedShelfPercent = twoShelfMode
@@ -198,36 +235,64 @@ export default function LightTools() {
     setChannel(name);
   }
 
-  // ===== CSV attachment per channel =====
+  // ===== CSV attachment (multiple; summed) per channel =====
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   function attachCSVPrompt() {
     fileInputRef.current?.click();
   }
 
-  async function onCSVSelected(file: File) {
+  async function onCSVSelected(files: FileList) {
     try {
-      const text = await file.text();
-      const spectrum = parseSpectrumCSV(text);
       const next = [...presets];
       const shelfKey = twoShelfMode ? "high" : shelf;
       const ch = next[presetIndex].shelves[shelfKey].channels[channel] ?? { A: 1, b: 0 };
-      ch.spectrum = spectrum;
-      next[presetIndex].shelves[shelfKey].channels[channel] = ch;
+      const sets = ch.spectrumSets ? [...ch.spectrumSets] : [];
+      for (const f of Array.from(files)) {
+        const text = await f.text();
+        const points = parseSpectrumCSV(text);
+        sets.push({ id: uid(), name: f.name, points, enabled: true });
+      }
+      next[presetIndex].shelves[shelfKey].channels[channel] = { ...ch, spectrumSets: sets };
       savePresets(next);
     } catch (err: any) {
       alert("Failed to parse CSV: " + err?.message);
     }
   }
 
-  // ===== Spectrum visualization =====
-  const spectrumData: SpectrumRow[] = useMemo(() => {
-    const s = params.spectrum;
-    if (!s || s.length === 0) return [];
-    const pct = selectedShelfPercent;
-    return s.map((pt) => ({ wavelength: pt.wavelength, value: pt.A * pct + pt.b }));
-  }, [params.spectrum, selectedShelfPercent]);
+  function toggleSetEnabled(setId: string, enabled: boolean) {
+    const next = [...presets];
+    const shelfKey = twoShelfMode ? "high" : shelf;
+    const ch = next[presetIndex].shelves[shelfKey].channels[channel];
+    if (!ch || !ch.spectrumSets) return;
+    ch.spectrumSets = ch.spectrumSets.map((s) => (s.id === setId ? { ...s, enabled } : s));
+    savePresets(next);
+  }
 
-  const parIntegrated = useMemo(() => integratePAR(spectrumData), [spectrumData]);
+  function removeSet(setId: string) {
+    const next = [...presets];
+    const shelfKey = twoShelfMode ? "high" : shelf;
+    const ch = next[presetIndex].shelves[shelfKey].channels[channel];
+    if (!ch || !ch.spectrumSets) return;
+    ch.spectrumSets = ch.spectrumSets.filter((s) => s.id !== setId);
+    savePresets(next);
+  }
+
+  // ===== Spectrum visualization (summed over selected sets) =====
+  const spectrumSets = (params.spectrumSets ?? []) as SpectrumSet[];
+
+  const componentSeries = useMemo(() => {
+    // Return an array of series, one per enabled set
+    return spectrumSets
+      .filter((s) => s.enabled)
+      .map((s) => ({ name: s.name, data: s.points.map((pt) => ({ wavelength: pt.wavelength, value: pt.A * selectedShelfPercent + pt.b })) }));
+  }, [spectrumSets, selectedShelfPercent]);
+
+  const combinedData: SpectrumRow[] = useMemo(() => sumSpectra(spectrumSets.filter((s) => s.enabled), selectedShelfPercent), [spectrumSets, selectedShelfPercent]);
+
+  // Integration range (nm) & result
+  const [nmMin, setNmMin] = useState<number>(400);
+  const [nmMax, setNmMax] = useState<number>(700);
+  const parIntegrated = useMemo(() => integrateRange(combinedData, Math.min(nmMin, nmMax), Math.max(nmMin, nmMax)), [combinedData, nmMin, nmMax]);
 
   // ===== Render =====
   return (
@@ -302,14 +367,25 @@ export default function LightTools() {
       {!twoShelfMode && (
         <div className="space-y-2">
           <label className="block text-sm font-medium">Intensity (%)</label>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={percent}
-            onChange={(e) => setPercent(parseInt(e.target.value, 10))}
-            className="w-full"
-          />
+          <div className="flex items-center gap-3">
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={percent}
+              onChange={(e) => setPercent(parseInt(e.target.value, 10))}
+              className="w-full"
+            />
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={percent}
+              onChange={(e) => setPercent(clamp(parseFloat(e.target.value || "0")))}
+              className="w-20 border rounded p-1 text-sm"
+            />
+            <span className="text-sm text-slate-600">%</span>
+          </div>
           <div className="flex items-center gap-3 text-sm">
             <div>
               PPFD ≈ <b>{ppfd.toFixed(2)}</b>
@@ -323,31 +399,57 @@ export default function LightTools() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium">High shelf %</label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={percent}
-              onChange={(e) => setPercent(parseInt(e.target.value, 10))}
-              className="w-full"
-            />
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={percent}
+                onChange={(e) => setPercent(parseInt(e.target.value, 10))}
+                className="w-full"
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={percent}
+                onChange={(e) => setPercent(clamp(parseFloat(e.target.value || "0")))}
+                className="w-20 border rounded p-1 text-sm"
+              />
+              <span className="text-sm text-slate-600">%</span>
+            </div>
             <div className="text-xs text-slate-600">High PPFD ≈ {(params.A * percent + params.b).toFixed(2)}</div>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium">Low shelf user %</label>
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={percentLowUser}
-              onChange={(e) => setPercentLowUser(parseInt(e.target.value, 10))}
-              className="w-full"
-            />
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={percentLowUser}
+                onChange={(e) => setPercentLowUser(parseInt(e.target.value, 10))}
+                className="w-full"
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={percentLowUser}
+                onChange={(e) => setPercentLowUser(clamp(parseFloat(e.target.value || "0")))}
+                className="w-20 border rounded p-1 text-sm"
+              />
+              <span className="text-sm text-slate-600">%</span>
+            </div>
             <div className="text-xs text-slate-600">User-set low %: {percentLowUser.toFixed(0)}%</div>
           </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium">Low shelf effective %</label>
-            <input type="range" min={0} max={100} value={lowEffectivePercent} readOnly className="w-full" />
+            <div className="flex items-center gap-3">
+              <input type="range" min={0} max={100} value={lowEffectivePercent} readOnly className="w-full" />
+              <input type="number" value={lowEffectivePercent.toFixed(1)} readOnly className="w-20 border rounded p-1 text-sm bg-slate-50" />
+              <span className="text-sm text-slate-600">%</span>
+            </div>
             <div className="text-xs text-slate-600">
               Effective low % = user {percentLowUser.toFixed(0)}% + leak ({(lowShiftParams?.A ?? 0).toFixed(3)}×{percent.toFixed(
                 0
@@ -389,56 +491,94 @@ export default function LightTools() {
       <div className="border rounded-lg p-3">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-medium">Spectrum visualization</div>
+            <div className="font-medium">Spectrum visualization (sum multiple CSVs)</div>
             <div className="text-xs text-slate-500">
-              Upload a CSV for this channel with columns: wavelength_nm, A, b. Values shown are irradiance (μW/cm²/nm) at the
-              current set %.
+              Upload one or more CSVs for this channel with columns: wavelength_nm, A, b. Values are interpreted as spectral photon
+              flux density in <b>μE/m²/s/nm</b> at the current set %.
             </div>
           </div>
           <div className="flex items-center gap-2">
             <input
               type="file"
               ref={fileInputRef}
+              multiple
               onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (f) onCSVSelected(f);
+                const files = e.target.files;
+                if (files && files.length > 0) onCSVSelected(files);
                 if (fileInputRef.current) fileInputRef.current.value = ""; // reset for re-upload
               }}
               accept=".csv,text/csv"
               className="hidden"
             />
             <button onClick={attachCSVPrompt} className="px-3 py-1.5 text-sm border rounded">
-              Attach CSV to channel
+              Add CSV(s)
             </button>
           </div>
         </div>
 
-        {spectrumData.length === 0 ? (
+        {(spectrumSets?.length ?? 0) === 0 ? (
           <div className="text-sm text-slate-500 mt-3">
-            No spectrum attached for <b>{channel}</b>. Click <i>Attach CSV to channel</i> and select your calibration file
-            (e.g., CoolWhite_helios.csv). The file is saved locally in your browser with the preset.
+            No spectra added for <b>{channel}</b>. Click <i>Add CSV(s)</i> and select your calibration file(s) (e.g.,
+            CoolWhite_helios.csv). Files are saved locally in your browser with the preset.
           </div>
         ) : (
-          <div className="mt-3">
+          <div className="mt-3 space-y-3">
+            {/* Active sets list */}
+            <div className="flex flex-wrap gap-2 items-center text-sm">
+              {spectrumSets?.map((s) => (
+                <label key={s.id} className="flex items-center gap-1 border rounded px-2 py-1">
+                  <input
+                    type="checkbox"
+                    checked={s.enabled}
+                    onChange={(e) => toggleSetEnabled(s.id, e.target.checked)}
+                  />
+                  <span className="truncate max-w-[180px]" title={s.name}>{s.name}</span>
+                  <button className="ml-2 text-red-600" onClick={() => removeSet(s.id)} title="Remove">×</button>
+                </label>
+              ))}
+            </div>
+
+            {/* Integration controls */}
             <div className="flex flex-wrap items-center gap-3 text-sm">
-              <div>
-                Points: <b>{spectrumData.length}</b>
-              </div>
               <div>
                 Current %: <b>{selectedShelfPercent.toFixed(1)}%</b>
               </div>
+              <div className="flex items-center gap-2">
+                <span>Integrate</span>
+                <input
+                  type="number"
+                  value={nmMin}
+                  onChange={(e) => setNmMin(parseFloat(e.target.value || "400"))}
+                  className="w-20 border rounded p-1 text-sm"
+                />
+                <span>–</span>
+                <input
+                  type="number"
+                  value={nmMax}
+                  onChange={(e) => setNmMax(parseFloat(e.target.value || "700"))}
+                  className="w-20 border rounded p-1 text-sm"
+                />
+                <span>nm</span>
+              </div>
               <div>
-                PAR 400–700 nm (∫ irradiance dλ): <b>{parIntegrated.toFixed(1)}</b> μW/cm²
+                PAR {Math.min(nmMin, nmMax)}–{Math.max(nmMin, nmMax)} nm (∫ φ(λ) dλ): <b>{parIntegrated.toFixed(2)}</b> μE/m²/s
               </div>
             </div>
-            <div className="h-64 w-full mt-2">
+
+            {/* Chart */}
+            <div className="h-72 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={spectrumData} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="wavelength" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(v) => `${v} nm`} />
-                  <YAxis tickFormatter={(v) => `${v}`} label={{ value: "μW/cm²/nm", angle: -90, position: "insideLeft" }} />
-                  <Tooltip formatter={(v: any) => [`${(v as number).toFixed(2)} μW/cm²/nm`, "Irradiance"]} labelFormatter={(l) => `${l} nm`} />
-                  <Line type="monotone" dataKey="value" dot={false} />
+                  <XAxis dataKey="wavelength" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(v) => `${v} nm`} allowDecimals />
+                  <YAxis domain={[0, 3.6]} tickFormatter={(v) => `${v}`} label={{ value: "μE/m²/s/nm", angle: -90, position: "insideLeft" }} />
+                  <Tooltip formatter={(v: any) => [`${(v as number).toFixed(3)} μE/m²/s/nm`, "Value"]} labelFormatter={(l) => `${l} nm`} />
+                  {/* Component lines */}
+                  {componentSeries.map((s, idx) => (
+                    <Line key={s.name + idx} data={s.data} dataKey="value" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" />
+                  ))}
+                  {/* Combined line */}
+                  <Line data={combinedData} dataKey="value" name="SUM" dot={false} type="monotone" strokeWidth={2} />
                 </LineChart>
               </ResponsiveContainer>
             </div>
@@ -449,7 +589,7 @@ export default function LightTools() {
       <div className="text-xs text-slate-500">
         Presets and attached CSVs are stored locally in your browser (no server). To share with colleagues, export your preset JSON
         from DevTools localStorage key <code>ppfd.presets.v2</code>. CSV parsing expects numeric values; rows with missing values are
-        skipped. Units: PPFD from the linear model; spectrum in μE/m²/s/nm.
+        skipped. Units: PPFD from the linear model; spectrum is treated as <b>μE/m²/s/nm</b> and the integral returns <b>μE/m²/s</b>.
       </div>
     </div>
   );
