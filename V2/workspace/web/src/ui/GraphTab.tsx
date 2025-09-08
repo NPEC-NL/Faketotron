@@ -1,50 +1,46 @@
+// web/src/ui/GraphTab.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Store from "../state/store";
-const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 import { sampleGroup, XY } from "../utils/sampler";
+import { parseDurationToSeconds, formatDurationPreserveDays } from "../utils/time";
+
+const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
 /* ───────────── Helpers ───────────── */
 
 const has = (s: string | undefined, sub: string) =>
   (s || "").toLowerCase().includes(sub.toLowerCase());
 
-// Color mapping by group name
 function colorFor(name: string): string {
   const n = (name || "").toLowerCase();
-  if (has(n, "cool white") || has(n, "cool-white")) return "#3BA7FF";    // cold blue
-  if (has(n, "warm white") || has(n, "warm-white")) return "#FFB84D";    // amber
+  if (has(n, "cool white") || has(n, "cool-white")) return "#3BA7FF";
+  if (has(n, "warm white") || has(n, "warm-white")) return "#FFB84D";
   if (has(n, "daylight")) return "#7DB3FF";
   if (has(n, "far") && has(n, "red")) return "#B00020";
   if (has(n, "red")) return "#E11D48";
   if (has(n, "blue")) return "#2563EB";
   if (has(n, "uv")) return "#7C3AED";
-  if (has(n, "co2") || has(n, "co₂")) return "#9CA3AF";                  // grey
-  if (has(n, "temperature") || has(n, "temp")) return "#F97316";         // orange
-  if (has(n, "humidity") || has(n, "rh")) return "#22C55E";              // green
-  if (has(n, "hydro") || has(n, "water") || has(n, "irrigation")) return "#14B8A6"; // aqua
+  if (has(n, "co2") || has(n, "co₂")) return "#9CA3AF";
+  if (has(n, "temperature") || has(n, "temp")) return "#F97316";
+  if (has(n, "humidity") || has(n, "rh")) return "#22C55E";
+  if (has(n, "hydro") || has(n, "water") || has(n, "irrigation")) return "#14B8A6";
   const FALLBACKS = ["#0EA5E9", "#10B981", "#EF4444", "#F59E0B", "#8B5CF6", "#22C55E", "#E11D48", "#7C3AED"];
   let h = 0; for (let i = 0; i < n.length; i++) h = (h * 31 + n.charCodeAt(i)) >>> 0;
   return FALLBACKS[h % FALLBACKS.length];
 }
-
-// Optional dash styles
 function dashFor(name: string): string | undefined {
   const n = (name || "").toLowerCase();
   if (has(n, "co2") || has(n, "co₂")) return "6 4";
   if (has(n, "hydro") || has(n, "irrigation") || has(n, "water")) return "3 3";
   if (has(n, "humidity") || has(n, "rh")) return "8 3 2 3";
-  return undefined; // solid
+  return undefined;
 }
-
-// Scale rule: CO₂ & Temperature stored ×10 → plot ÷10
 function scaleYByName(name: string, y: number): number {
   const n = (name || "").toLowerCase();
   if (has(n, "co2") || has(n, "co₂")) return y / 10;
   if (has(n, "temperature") || has(n, "temp")) return y / 10;
   return y;
 }
-
-// y at x along series (linear interpolation)
 function yAt(series: XY[], x: number): number | null {
   if (!series.length) return null;
   let lo = 0, hi = series.length - 1;
@@ -60,16 +56,12 @@ function yAt(series: XY[], x: number): number | null {
   const t = (x - a.x) / (b.x - a.x);
   return a.y + t * (b.y - a.y);
 }
-
-// seconds -> "HH:MM"
 function fmtHM(sec: number): string {
   const m = Math.max(0, Math.floor(sec / 60));
   const hh = Math.floor(m / 60);
   const mm = m % 60;
   return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
 }
-
-// ticks for a span (seconds), ~6 ticks
 function ticksNice(maxSpan: number, target = 6): number[] {
   if (maxSpan <= 0) return [0, 1];
   const steps = [1, 2, 5];
@@ -87,14 +79,120 @@ function ticksNice(maxSpan: number, target = 6): number[] {
   if (out[out.length - 1] !== Math.round(maxSpan)) out.push(maxSpan);
   return out;
 }
-
-// round up to a “nice” Y upper bound (0..100 unless exceeded)
 function niceCeil(y: number): number {
   if (y <= 100) return 100;
   const mag = Math.pow(10, Math.floor(Math.log10(y)));
   const unit = mag / 2;
   return Math.ceil(y / unit) * unit;
 }
+
+/* ───────────── Draft overlay & editors ───────────── */
+
+type DraftPatch = Record<string, any>;
+const phaseKey = (gi: number, pi: number) => `${gi}:${pi}`;
+
+function defaultsForType(nextType: string, prev: any) {
+  const duration = prev?.duration ?? "01:00:00";
+  const step     = prev?.step     ?? "00:05:00";
+  if (nextType === "fixed") {
+    return {
+      __keepKeys: ["type", "duration", "value"],
+      type: "fixed",
+      duration,
+      value: prev?.value ?? 0,
+    };
+  }
+  if (nextType === "ramp") {
+    return {
+      __keepKeys: ["type", "duration", "step", "start", "end"],
+      type: "ramp",
+      duration,
+      step,
+      start: prev?.start ?? 0,
+      end:   prev?.end   ?? 0,
+    };
+  }
+  if (nextType === "sin") {
+    return {
+      __keepKeys: ["type", "duration", "step", "min", "max", "period", "phaseOffset"],
+      type: "sin",
+      duration,
+      step,
+      min:         prev?.min ?? 0,
+      max:         prev?.max ?? 0,
+      period:      prev?.period      ?? "01:00:00",
+      phaseOffset: prev?.phaseOffset ?? "00:00:00",
+    };
+  }
+  if (nextType === "clouds") {
+    return {
+      __keepKeys: [
+        "type","duration","step",
+        "offset","amplitude",
+        "cloud_density","cloud_position",
+        "cloud_duration_mean","cloud_duration_var",
+        "fluctuation_mean_ratio","fluctuation_var",
+        "cloud_drop_coeff"
+      ],
+      type: "clouds",
+      duration,
+      step,
+      offset:  prev?.offset    ?? 0,
+      amplitude: prev?.amplitude ?? 0,
+      cloud_density: prev?.cloud_density ?? 0,
+      cloud_position: prev?.cloud_position ?? 0,
+      cloud_duration_mean: prev?.cloud_duration_mean ?? 0,
+      cloud_duration_var:  prev?.cloud_duration_var  ?? 0,
+      fluctuation_mean_ratio: prev?.fluctuation_mean_ratio ?? 0,
+      fluctuation_var: prev?.fluctuation_var ?? 0,
+      cloud_drop_coeff: prev?.cloud_drop_coeff ?? 0,
+    };
+  }
+  return defaultsForType("fixed", prev);
+}
+
+function applyDrafts(proto: any, draftsMap: Map<string, DraftPatch>) {
+  if (!draftsMap.size) return proto;
+  const out = typeof structuredClone === "function" ? structuredClone(proto) : JSON.parse(JSON.stringify(proto));
+  const parts = out?.sections?.[0]?.parts || [];
+  draftsMap.forEach((patch, key) => {
+    const [giStr, piStr] = key.split(":");
+    const gi = +giStr, pi = +piStr;
+    const grp = parts[gi]; if (!grp || !grp.phases || !grp.phases[pi]) return;
+    let base = grp.phases[pi];
+
+    if (Array.isArray((patch as any).__keepKeys)) {
+      const keep = new Set<string>((patch as any).__keepKeys);
+      const trimmed: any = {};
+      Object.keys(base).forEach((k) => { if (keep.has(k)) trimmed[k] = base[k]; });
+      base = trimmed;
+    }
+    grp.phases[pi] = { ...base, ...patch };
+    delete grp.phases[pi].__keepKeys;
+  });
+  return out;
+}
+
+function normalizeType(t: any): "fixed"|"ramp"|"sin"|"clouds" {
+  const s = String(t || "").toLowerCase().trim();
+  if (s === "fixed" || s === "const" || s === "constant") return "fixed";
+  if (s === "ramp") return "ramp";
+  if (s === "sin" || s === "sine") return "sin";
+  if (s === "clouds" || s === "cloud") return "clouds";
+  return "fixed";
+}
+function ensurePhaseShape(raw: any) {
+  const t = normalizeType(raw?.type);
+  const base = { ...raw, type: t };
+  if (t === "fixed") return { duration: "01:00:00", value: 0, ...base };
+  if (t === "ramp")  return { duration: "01:00:00", step: "00:05:00", start: 0, end: 0, ...base };
+  if (t === "sin")   return { duration: "01:00:00", step: "00:05:00", min: 0, max: 0, period: "01:00:00", phaseOffset:"00:00:00", ...base };
+  if (t === "clouds")return { duration: "01:00:00", step: "00:05:00", offset:0, amplitude:0,
+                               cloud_density:0, cloud_position:0, cloud_duration_mean:0, cloud_duration_var:0,
+                               fluctuation_mean_ratio:0, fluctuation_var:0, cloud_drop_coeff:0, ...base };
+  return base;
+}
+
 
 /* ───────────── Component ───────────── */
 
@@ -108,41 +206,43 @@ type Row = {
 };
 
 export default function GraphTab() {
-  const protocol = useProto((s: any) => s.protocol);
-  const protoRev  = useProto((s: any) => s.protoRev ?? 0);
+  // Store selectors
+  const protocol   = useProto((s: any) => s.protocol);
+  const protoRev   = useProto((s: any) => s.protoRev ?? 0);
+  const setProtocol = useProto((s: any) => s.setProtocol);
 
-  // DEV sanity: confirm we see bumps
-  useEffect(() => { console.log("[GraphTab] protoRev =", protoRev); }, [protoRev]);
-
-  const parts = protocol?.sections?.[0]?.parts || [];
-
-  // Legend visibility
-  const [visible, setVisible] = useState<Set<number>>(
-    () => new Set(parts.map((_, i) => i))
-  );
-  // X zoom & pan
-  const [zoom, setZoom] = useState<number>(1);     // 1x..10x
-  const [scroll, setScroll] = useState<number>(0); // 0..1
-  // Hover/selection
+  // Local UI state
+  const [visible, setVisible] = useState<Set<number>>(new Set());
+  const [zoom, setZoom] = useState<number>(1);
+  const [scroll, setScroll] = useState<number>(0);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<{ gi: number; pi: number } | null>(null);
 
-  // Keep legend stable when groups change
+  // Local drafts
+  const [drafts, setDrafts] = useState<Map<string, DraftPatch>>(new Map());
+
+  useEffect(() => { console.log("[GraphTab] protoRev =", protoRev); }, [protoRev]);
+
+  const parts = protocol?.sections?.[0]?.parts || [];
   useEffect(() => {
     const all = new Set(parts.map((_: any, i: number) => i));
-    setVisible((prev) => {
+    setVisible(prev => {
       const next = new Set<number>();
       all.forEach(i => { if (prev.has(i)) next.add(i); });
       return next.size ? next : all;
     });
   }, [parts.length, protoRev]);
 
-  // Clear selected phase on protocol change
-  useEffect(() => { setSelPhase(null); }, [protoRev]);
+  useEffect(() => {
+    setSelPhase(null);
+    setDrafts(new Map());
+  }, [protoRev]);
 
-  // Build rows (re-sample) whenever protocol changes
+  const overlayProtocol = useMemo(() => applyDrafts(protocol, drafts), [protocol, drafts]);
+  const overlayParts = overlayProtocol?.sections?.[0]?.parts || [];
+
   const rows: Row[] = useMemo(() => {
-    return parts.map((g: any, idx: number) => {
+    return overlayParts.map((g: any, idx: number) => {
       const out = sampleGroup(g);
       const xmax = out.series.length ? out.series[out.series.length - 1].x : 1;
       const name: string =
@@ -151,16 +251,13 @@ export default function GraphTab() {
       const unit: string = g?.unit || "";
       return { i: idx, name, unit, series: out.series, phaseStarts: out.phaseStarts, xmax };
     });
-  }, [protoRev, parts.length]);
+  }, [overlayParts, protoRev, drafts]);
 
   const globalXMax = Math.max(1, ...rows.map(r => r.xmax));
-
-  // X window from zoom & scroll
   const xWindow = globalXMax / Math.max(1, zoom);
   const xMin = Math.min(scroll, 1) * Math.max(0, globalXMax - xWindow);
   const xMax = xMin + xWindow;
 
-  // Frozen Y range (0..100 unless exceeded)
   const frozenYRangeRef = useRef<{ ymin: number; ymax: number; span: number } | null>(null);
   useEffect(() => {
     let ymaxScaled = 0;
@@ -174,22 +271,18 @@ export default function GraphTab() {
     const ymax = niceCeil(ymaxScaled);
     const span = Math.max(1, ymax - ymin);
     frozenYRangeRef.current = { ymin, ymax, span };
-  }, [protoRev, rows]);
-
+  }, [rows]);
   const yRange = frozenYRangeRef.current || { ymin: 0, ymax: 100, span: 100 };
 
-  // SVG virtual size (responsive via viewBox)
-  const VW = 1000;
-  const VH = 380;
-  // inner padding / plot rect
+  const VW = 1000, VH = 380;
   const LEFT = 68, RIGHT = 24, TOP = 16, BOT = 36;
   const PLOT_W = VW - LEFT - RIGHT;
   const PLOT_H = VH - TOP - BOT;
 
   const xTicks = useMemo(() => ticksNice(xWindow), [xWindow]);
-
   const mapX = (x: number) => LEFT + ((x - xMin) / Math.max(1e-6, xMax - xMin)) * PLOT_W;
   const mapY = (ys: number) => TOP + (PLOT_H - ((ys - yRange.ymin) / Math.max(1e-6, yRange.span)) * PLOT_H);
+  const nudgePx = (idx: number) => ((idx % 3) - 1) * 1.2;
 
   function toggleVisible(i: number) {
     setVisible(prev => {
@@ -198,10 +291,6 @@ export default function GraphTab() {
       return next.size ? next : new Set(parts.map((_: any, idx: number) => idx));
     });
   }
-
-  // Small screen-space nudge per series to reduce perfect occlusion
-  const nudgePx = (idx: number) => ((idx % 3) - 1) * 1.2; // -1.2, 0, +1.2 px pattern
-
   function pathFrom(points: XY[], name: string, idx: number): string {
     let d = "";
     const offset = nudgePx(idx);
@@ -210,30 +299,71 @@ export default function GraphTab() {
       if (p.x < xMin && (points[i + 1]?.x ?? p.x) < xMin) continue;
       if (p.x > xMax && (points[i - 1]?.x ?? p.x) > xMax) break;
       const X = mapX(Math.min(Math.max(p.x, xMin), xMax));
-      const Y = mapY(scaleYByName(name, p.y)) + offset; // screen-space nudge
+      const Y = mapY(scaleYByName(name, p.y)) + offset;
       d += (d ? ` L ${X} ${Y}` : `M ${X} ${Y}`);
     }
     return d || `M ${LEFT} ${TOP + PLOT_H} L ${LEFT + PLOT_W} ${TOP + PLOT_H}`;
   }
-
   function getPhase(gi: number, pi: number) {
-    const g = protocol?.sections?.[0]?.parts?.[gi];
+    const g = overlayParts?.[gi];
     const phase = g?.phases?.[pi];
     return { group: g, phase };
   }
 
   const [hardKey, setHardKey] = useState(0);
-
   useEffect(() => {
     const onLoaded = () => setHardKey(k => k + 1);
     window.addEventListener("protocol:loaded", onLoaded);
     return () => window.removeEventListener("protocol:loaded", onLoaded);
   }, []);
 
+  function saveDraftsToEditor() {
+    if (!drafts.size) return;
+    const merged = applyDrafts(protocol, drafts);
+    console.log("[GraphTab] saving", drafts.size, "draft patch(es) → store + protocol:save-draft");
+    setProtocol(merged);
+    window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: merged } }));
+    setDrafts(new Map());
+  }
+
+  // Draft updaters used by the panel
+  function draftKV(gi: number, pi: number, key: string, value: any) {
+    const k = phaseKey(gi, pi);
+    setDrafts(prev => {
+      const next = new Map(prev);
+      const cur = next.get(k) || {};
+      next.set(k, { ...cur, [key]: value });
+      return next;
+    });
+  }
+  function onNum(gi: number, pi: number, key: string, n: number) {
+    if (Number.isFinite(n)) draftKV(gi, pi, key, n);
+  }
+  function onTime(gi: number, pi: number, key: string, raw: string) {
+    const sec = parseDurationToSeconds(raw);
+    draftKV(gi, pi, key, formatDurationPreserveDays(sec));
+  }
+  function onType(gi: number, pi: number, nextType: string) {
+    const g = protocol?.sections?.[0]?.parts?.[gi];
+    const prev = g?.phases?.[pi] || {};
+    const shaped = defaultsForType(nextType, prev);
+    setDrafts((prevMap) => {
+      const k = phaseKey(gi, pi);
+      const next = new Map(prevMap);
+      next.set(k, shaped);
+      return next;
+    });
+  }
 
   return (
     <div className="card" style={{ overflow: "visible" }} key={hardKey}>
-      <div className="label">Graph</div>
+      <div className="label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span>Graph</span>
+        <div className="hstack" style={{ gap: 8 }}>
+          <button className="btn" onClick={() => setDrafts(new Map())} title="Discard all unsaved edits">Discard</button>
+          <button className="btn primary" onClick={saveDraftsToEditor} title="Apply to Editor + Legacy">Save to Editor</button>
+        </div>
+      </div>
 
       {/* Controls */}
       <div className="hstack" style={{ gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 6 }}>
@@ -246,9 +376,7 @@ export default function GraphTab() {
           <label>Scroll:</label>
           <input type="range" min={0} max={1} step={0.01} value={scroll} onChange={(e) => setScroll(parseFloat(e.target.value))} />
         </div>
-        <div className="muted small">
-          Window: {fmtHM(xMin)} → {fmtHM(xMax)}
-        </div>
+        <div className="muted small">Window: {fmtHM(xMin)} → {fmtHM(xMax)}</div>
       </div>
 
       {/* Legend */}
@@ -261,14 +389,7 @@ export default function GraphTab() {
             <label key={idx} style={{ display: "inline-flex", gap: 8, alignItems: "center", cursor: "pointer" }}>
               <input type="checkbox" checked={on} onChange={() => toggleVisible(idx)} />
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                <span
-                  style={{
-                    width: 18,
-                    height: 0,
-                    borderTop: `3px ${dash ? "dashed" : "solid"} ${color}`,
-                    display: "inline-block"
-                  }}
-                />
+                <span style={{ width: 18, height: 0, borderTop: `3px ${dash ? "dashed" : "solid"} ${color}`, display: "inline-block" }} />
                 <span>{r.name}</span>
               </span>
             </label>
@@ -290,18 +411,12 @@ export default function GraphTab() {
           position: "relative",
         }}
       >
-        <svg
-          viewBox={`0 0 1000 380`}
-          width="90%"
-          height="90%"
-          preserveAspectRatio="none"
-          style={{ display: "block" }}
-        >
+        <svg viewBox="0 0 1000 380" width="100%" height="100%" preserveAspectRatio="none" style={{ display: "block" }}>
           {/* Axes */}
           <line x1={LEFT} y1={TOP} x2={LEFT} y2={TOP + PLOT_H} stroke="#e5e7eb" />
           <line x1={LEFT} y1={TOP + PLOT_H} x2={LEFT + PLOT_W} y2={TOP + PLOT_H} stroke="#e5e7eb" />
 
-          {/* X ticks (HH:MM) */}
+          {/* X ticks */}
           {xTicks.map((t, i) => {
             const xv = xMin + t;
             const x = mapX(xv);
@@ -315,7 +430,7 @@ export default function GraphTab() {
             );
           })}
 
-          {/* Y ticks: 0, 50, max (frozen) */}
+          {/* Y ticks: 0, mid, max (frozen) */}
           {[yRange.ymin, yRange.ymin + yRange.span / 2, yRange.ymax].map((v, i) => {
             const y = mapY(v);
             return (
@@ -328,27 +443,22 @@ export default function GraphTab() {
             );
           })}
 
-          {/* Lines (halo + colored stroke, dash, hover thickness) */}
+          {/* Series */}
           {rows.map((r, idx) => {
-            const on = visible.has(idx);
-            if (!on) return null;
+            if (!visible.has(idx)) return null;
             const color = colorFor(r.name);
             const dash = dashFor(r.name);
-            const pathD = pathFrom(r.series, r.name, idx);
+            const d = pathFrom(r.series, r.name, idx);
             const thick = hoverIdx === idx ? 3 : 2;
             return (
-              <g key={idx}
-                 onMouseEnter={() => setHoverIdx(idx)}
-                 onMouseLeave={() => setHoverIdx(null)}>
-                {/* Halo underlay */}
-                <path d={pathD} fill="none" stroke="#fff" strokeOpacity={0.9} strokeWidth={thick + 3}/>
-                {/* Actual colored line */}
-                <path d={pathD} fill="none" stroke={color} strokeWidth={thick} strokeDasharray={dash}/>
+              <g key={idx} onMouseEnter={() => setHoverIdx(idx)} onMouseLeave={() => setHoverIdx(null)}>
+                <path d={d} fill="none" stroke="#fff" strokeOpacity={0.9} strokeWidth={thick + 3} />
+                <path d={d} fill="none" stroke={color} strokeWidth={thick} strokeDasharray={dash} />
               </g>
             );
           })}
 
-          {/* Phase markers on the line with numbers (clickable) */}
+          {/* Phase markers (clickable) */}
           {rows.map((r, idx) => {
             if (!visible.has(idx)) return null;
             const color = colorFor(r.name);
@@ -380,15 +490,23 @@ export default function GraphTab() {
           </text>
         </svg>
 
-        {/* Phase panel (read-only for now) */}
+        {/* Phase panel (editable, writes back to editor) */}
         {selPhase && (() => {
           const { gi, pi } = selPhase;
           const row = rows[gi];
           const starts = row?.phaseStarts || [];
           const startSec = starts[pi] ?? 0;
           const endSec = starts[pi + 1] ?? row?.xmax ?? startSec;
-          const { phase } = getPhase(gi, pi);
-          const type = phase?.type ?? "fixed";
+
+          const rawPhase = overlayParts?.[gi]?.phases?.[pi] || {};
+          const asAny = ensurePhaseShape(rawPhase);        // normalize
+          const type  = asAny.type as string;
+
+
+          const Input = (props: React.InputHTMLAttributes<HTMLInputElement>) => (
+            <input {...props} className="input" style={{ width: "100%" }} />
+          );
+
           return (
             <div
               className="card"
@@ -396,7 +514,7 @@ export default function GraphTab() {
                 position: "absolute",
                 right: 12,
                 top: 12,
-                width: 320,
+                width: 360,
                 background: "white",
                 boxShadow: "0 10px 30px rgba(0,0,0,0.12)",
                 borderRadius: 12,
@@ -406,36 +524,206 @@ export default function GraphTab() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div className="label" style={{ margin: 0 }}>Phase {pi + 1}</div>
-                <button className="btn" onClick={() => setSelPhase(null)}>Close</button>
+                <div className="hstack" style={{ gap: 8 }}>
+                  <button className="btn" onClick={() => setSelPhase(null)}>Close</button>
+                </div>
               </div>
               <div className="rule" />
-              <div style={{ fontSize: 13, lineHeight: 1.5 }}>
+
+              <div className="muted small" style={{ marginBottom: 8 }}>
+                Range checks are not enforced here. Machine limits apply in the legacy editor.
+              </div>
+
+              <div style={{ fontSize: 13, lineHeight: 1.5, display: "grid", gap: 8 }}>
                 <div><b>Group:</b> {row?.name}</div>
-                <div><b>Type:</b> {type}</div>
-                <div><b>Start:</b> {fmtHM(startSec)} &nbsp; <b>End:</b> {fmtHM(endSec)}</div>
-                {type === "ramp" && phase && (
+
+                {/* Type */}
+                <label className="hstack" style={{ gap: 8 }}>
+                  <span style={{ width: 110 }}>Type</span>
+                  <select
+                    value={type}
+                    onChange={(e) => onType(gi, pi, e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="fixed">fixed</option>
+                    <option value="ramp">ramp</option>
+                    <option value="sin">sin</option>
+                    <option value="clouds">clouds</option>
+                  </select>
+                </label>
+
+                {/* Duration */}
+                <label className="hstack" style={{ gap: 8 }}>
+                  <span style={{ width: 110 }}>Duration</span>
+                  <Input
+                    placeholder="D.HH:MM:SS"
+                    value={asAny.duration ?? ""}
+                    onChange={(e) => onTime(gi, pi, "duration", e.target.value)}
+                  />
+                </label>
+
+                {/* step if present */}
+                {"step" in asAny && (
+                  <label className="hstack" style={{ gap: 8 }}>
+                    <span style={{ width: 110 }}>Step</span>
+                    <Input
+                      placeholder="D.HH:MM:SS"
+                      value={asAny.step ?? ""}
+                      onChange={(e) => onTime(gi, pi, "step", e.target.value)}
+                    />
+                  </label>
+                )}
+
+                {/* Type-specific fields */}
+                {type === "fixed" && (
+                  <label className="hstack" style={{ gap: 8 }}>
+                    <span style={{ width: 110 }}>Value</span>
+                    <Input
+                      type="number"
+                      value={asAny.value ?? 0}
+                      onChange={(e) => onNum(gi, pi, "value", Number(e.target.value))}
+                    />
+                  </label>
+                )}
+
+                {type === "ramp" && (
                   <>
-                    <div><b>Start Value:</b> {phase.start}</div>
-                    <div><b>End Value:</b> {phase.end}</div>
-                    <div><b>Step:</b> {phase.step}</div>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Start</span>
+                      <Input
+                        type="number"
+                        value={asAny.start ?? 0}
+                        onChange={(e) => onNum(gi, pi, "start", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>End</span>
+                      <Input
+                        type="number"
+                        value={asAny.end ?? 0}
+                        onChange={(e) => onNum(gi, pi, "end", Number(e.target.value))}
+                      />
+                    </label>
                   </>
                 )}
-                {type === "clouds" && phase && (
+
+                {type === "sin" && (
                   <>
-                    <div><b>Offset:</b> {phase.offset}</div>
-                    <div><b>Amplitude:</b> {phase.amplitude}</div>
-                    <div><b>Density:</b> {phase.cloud_density}</div>
-                    <div><b>Position:</b> {phase.cloud_position}</div>
-                    <div><b>Dur μ/σ:</b> {phase.cloud_duration_mean} / {phase.cloud_duration_var}</div>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Min</span>
+                      <Input
+                        type="number"
+                        value={asAny.min ?? 0}
+                        onChange={(e) => onNum(gi, pi, "min", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Max</span>
+                      <Input
+                        type="number"
+                        value={asAny.max ?? 0}
+                        onChange={(e) => onNum(gi, pi, "max", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Period</span>
+                      <Input
+                        placeholder="D.HH:MM:SS"
+                        value={asAny.period ?? ""}
+                        onChange={(e) => onTime(gi, pi, "period", e.target.value)}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Phase Offset</span>
+                      <Input
+                        placeholder="D.HH:MM:SS"
+                        value={asAny.phaseOffset ?? ""}
+                        onChange={(e) => onTime(gi, pi, "phaseOffset", e.target.value)}
+                      />
+                    </label>
                   </>
                 )}
-                {type === "sin" && phase && (
+
+                {type === "clouds" && (
                   <>
-                    <div><b>Min/Max:</b> {phase.min} / {phase.max}</div>
-                    <div><b>Period:</b> {phase.period}</div>
-                    <div><b>Phase Offset:</b> {phase.phaseOffset}</div>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Offset</span>
+                      <Input
+                        type="number"
+                        value={asAny.offset ?? 0}
+                        onChange={(e) => onNum(gi, pi, "offset", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Amplitude</span>
+                      <Input
+                        type="number"
+                        value={asAny.amplitude ?? 0}
+                        onChange={(e) => onNum(gi, pi, "amplitude", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Density</span>
+                      <Input
+                        type="number"
+                        value={asAny.cloud_density ?? 0}
+                        onChange={(e) => onNum(gi, pi, "cloud_density", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Position</span>
+                      <Input
+                        type="number"
+                        value={asAny.cloud_position ?? 0}
+                        onChange={(e) => onNum(gi, pi, "cloud_position", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Cloud μ (min)</span>
+                      <Input
+                        type="number"
+                        value={asAny.cloud_duration_mean ?? 0}
+                        onChange={(e) => onNum(gi, pi, "cloud_duration_mean", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Cloud σ</span>
+                      <Input
+                        type="number"
+                        value={asAny.cloud_duration_var ?? 0}
+                        onChange={(e) => onNum(gi, pi, "cloud_duration_var", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Fluct. μ</span>
+                      <Input
+                        type="number"
+                        value={asAny.fluctuation_mean_ratio ?? 0}
+                        onChange={(e) => onNum(gi, pi, "fluctuation_mean_ratio", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Fluct. σ</span>
+                      <Input
+                        type="number"
+                        value={asAny.fluctuation_var ?? 0}
+                        onChange={(e) => onNum(gi, pi, "fluctuation_var", Number(e.target.value))}
+                      />
+                    </label>
+                    <label className="hstack" style={{ gap: 8 }}>
+                      <span style={{ width: 110 }}>Drop coeff</span>
+                      <Input
+                        type="number"
+                        value={asAny.cloud_drop_coeff ?? 0}
+                        onChange={(e) => onNum(gi, pi, "cloud_drop_coeff", Number(e.target.value))}
+                      />
+                    </label>
                   </>
                 )}
+
+                <div className="muted small">
+                  Edits here are not range-checked. The legacy editor enforces machine limits on save.
+                </div>
               </div>
             </div>
           );
