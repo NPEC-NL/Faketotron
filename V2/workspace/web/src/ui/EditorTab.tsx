@@ -15,7 +15,7 @@ function mapProfileToLegacy(p: string) {
   }
 }
 
-/* visibility helper for modal autoscroll (unchanged) */
+/* visibility helper for modal autoscroll */
 function isActuallyVisible(el: Element): boolean {
   const cs = getComputedStyle(el as HTMLElement);
   if (cs.display === "none" || cs.visibility === "hidden" || parseFloat(cs.opacity || "1") === 0) return false;

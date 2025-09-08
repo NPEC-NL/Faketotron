@@ -1487,12 +1487,10 @@ function createDefaultGroups(){
 
 /* ====== Helper for temperature edit values ====== */
 function fmtForEdit(varType,val){ if(varType==='Temperature'){ return (Number(val)/10).toFixed(1); } return String(val);}
-
-/* ====== Phase field builder kept earlier ====== */
-
 </script>
 
 <script>
+/* ====== Protocol receiver from graph tab ====== */
 (function () {
   function setProtocolFromHost(proto) {
     try {
@@ -1531,7 +1529,7 @@ function fmtForEdit(varType,val){ if(varType==='Temperature'){ return (Number(va
   // Expose entry that EditorTab calls via postMessage
   window.setProtocolFromHost = setProtocolFromHost;
 
-  // Keep listening for the host message (your existing listener is fine)
+  // Keep listening for the host message
   window.addEventListener("message", (ev) => {
     const msg = ev.data || {};
     if (msg.type === "host:set-protocol") {
