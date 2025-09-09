@@ -116,9 +116,9 @@ You can add the measurement files from `/Light Calibrations` to visualize the li
 
 # Development
 
-For wrapping customized V1 into V2 and editing Light Tool preset, see `/V2/README.md`
+For wrapping customized V1 into V2 and editing Light Tool preset, see `\V2\README.md`
 
-For adding or modifying the profiles at legacy editor (V1), you can edit and open directly the `\workspace\web\src\legacy\latest\index.html`, and modify the profile default json at `const PROFILE_JSONS` and their corresponding ranges at `const RANGES`. 
+For adding or modifying the profiles at legacy editor (V1), you can edit and open directly the `V2\workspace\web\src\legacy\latest\index.html`, and modify the profile default json at `const PROFILE_JSONS` and their corresponding ranges at `const RANGES`. 
 
 The .json (variable groups and names) can be obtained by the real Fytotron Client by saving the protocol (.fyt file) to local computer, then open it using vscode or other hex decoder. For the range limit, you need to test it yourself on the real machine.
 
