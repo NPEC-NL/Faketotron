@@ -122,4 +122,4 @@ For adding or modifying the profiles at legacy editor (V1), you can edit and ope
 
 The .json (variable groups and names) can be obtained by the real Fytotron Client by saving the protocol (.fyt file) to local computer, then open it using vscode or other hex decoder. For the range limit, you need to test it yourself on the real machine.
 
-Be very careful to also edit `const MACHINE_VAR`: It's the actual machine variable name that you should obtain from the "real" .fyt file. We perform some frontend name mapping to match the display name in the real Fytotron (the real Fytotron Client has different display names than their machine variable names).
+**Be very careful to also edit `const MACHINE_VAR`**: It's the actual machine variable name that you should obtain from the "real" .fyt file. We perform some frontend name mapping to match the display name in the real Fytotron (the real Fytotron Client has different display names than their machine variable names).
