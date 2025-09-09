@@ -294,111 +294,84 @@ export default function LightTools() {
   const [nmMax, setNmMax] = useState<number>(700);
   const parIntegrated = useMemo(() => integrateRange(combinedData, Math.min(nmMin, nmMax), Math.max(nmMin, nmMax)), [combinedData, nmMin, nmMax]);
 
+
   // ===== Render =====
   return (
-    <div className="space-y-5">
-      {/* Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Preset</label>
-          <select
-            className="border rounded p-2 text-sm w-full"
-            value={presetIndex}
-            onChange={(e) => onChangePreset(parseInt(e.target.value, 10))}
-          >
-            {presets.map((p, i) => (
-              <option key={i} value={i}>
-                {p.name} ({p.profile})
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Shelf</label>
-          <select
-            className="border rounded p-2 text-sm w-full"
-            value={shelf}
-            onChange={(e) => setShelf(e.target.value)}
-          >
-            {Object.keys(preset.shelves).map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-          {twoShelfMode && (
-            <p className="text-xs text-slate-500">
-              In two-shelf mode, PPFD for <b>low</b> uses LOW% + leakage from HIGH (configured by lowshift A/b).
-            </p>
-          )}
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Channel</label>
-          <div className="flex gap-2 items-center">
-            <select
-              className="border rounded p-2 text-sm flex-1"
-              value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-            >
-              {Object.keys(twoShelfMode ? preset.shelves["high"].channels : preset.shelves[shelf]?.channels ?? {}).map(
-                (c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                )
-              )}
-            </select>
-            <button onClick={addChannel} className="px-2 py-1 text-sm border rounded">
-              + Channel
-            </button>
-          </div>
-          <div className="text-xs text-slate-500">Calibration lives with the driving shelf ("high" in two-shelf mode).</div>
-        </div>
-
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">A / b (linear calibration)</label>
-          <div className="text-sm p-2 border rounded bg-slate-50">A = {params.A}, b = {params.b}</div>
-        </div>
-      </div>
-
-      {/* Intensity controls */}
-      {!twoShelfMode && (
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Intensity (%)</label>
-          <div className="flex items-center gap-3">
-            <input
-              type="range"
-              min={0}
-              max={100}
-              value={percent}
-              onChange={(e) => setPercent(parseInt(e.target.value, 10))}
-              className="w-full"
-            />
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={percent}
-              onChange={(e) => setPercent(clamp(parseFloat(e.target.value || "0")))}
-              className="w-20 border rounded p-1 text-sm"
-            />
-            <span className="text-sm text-slate-600">%</span>
-          </div>
-          <div className="flex items-center gap-3 text-sm">
-            <div>
-              PPFD ≈ <b>{ppfd.toFixed(2)}</b>
-            </div>
-            <div className="text-slate-500">(from {params.A.toFixed(4)}×% + {params.b.toFixed(4)})</div>
-          </div>
-        </div>
-      )}
-
-      {twoShelfMode && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+    
+    <><div className="text-l text-slate-1000">
+      <b>Important Note: </b> The PPFD to device % conversion is calculated base on linear regression with measured parameters, and thus should only be considered as a reference rather than the precise actual value!
+    </div>
+      <div className="space-y-5">
+        {/* Controls */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium">High shelf %</label>
+            <label className="block text-sm font-medium">Preset</label>
+            <select
+              className="border rounded p-2 text-sm w-full"
+              value={presetIndex}
+              onChange={(e) => onChangePreset(parseInt(e.target.value, 10))}
+            >
+              {presets.map((p, i) => (
+                <option key={i} value={i}>
+                  {p.name} ({p.profile})
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Shelf</label>
+            <select
+              className="border rounded p-2 text-sm w-full"
+              value={shelf}
+              onChange={(e) => setShelf(e.target.value)}
+            >
+              {Object.keys(preset.shelves).map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+            {twoShelfMode && (
+              <p className="text-xs text-slate-500">
+                In two-shelf mode, PPFD for <b>low</b> uses LOW% + leakage from HIGH (configured by lowshift A/b).
+              </p>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Channel</label>
+            <div className="flex gap-2 items-center">
+              <select
+                className="border rounded p-2 text-sm flex-1"
+                value={channel}
+                onChange={(e) => setChannel(e.target.value)}
+              >
+                {Object.keys(twoShelfMode ? preset.shelves["high"].channels : preset.shelves[shelf]?.channels ?? {}).map(
+                  (c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  )
+                )}
+              </select>
+              <button onClick={addChannel} className="px-2 py-1 text-sm border rounded">
+                + Channel
+              </button>
+            </div>
+            <div className="text-xs text-slate-500">Calibration lives with the driving shelf ("high" in two-shelf mode).</div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">A / b (linear calibration)</label>
+            <div className="text-sm p-2 border rounded bg-slate-50">A = {params.A}, b = {params.b}</div>
+          </div>
+        </div>
+
+        {/* Intensity controls */}
+        {!twoShelfMode && (
+          <div className="space-y-2">
+            <label className="block text-sm font-medium">Intensity (%)</label>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -406,191 +379,210 @@ export default function LightTools() {
                 max={100}
                 value={percent}
                 onChange={(e) => setPercent(parseInt(e.target.value, 10))}
-                className="w-full"
-              />
+                className="w-full" />
               <input
                 type="number"
                 min={0}
                 max={100}
                 value={percent}
                 onChange={(e) => setPercent(clamp(parseFloat(e.target.value || "0")))}
-                className="w-20 border rounded p-1 text-sm"
-              />
+                className="w-20 border rounded p-1 text-sm" />
               <span className="text-sm text-slate-600">%</span>
             </div>
-            <div className="text-xs text-slate-600">High PPFD ≈ {(params.A * percent + params.b).toFixed(2)}</div>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium">Low shelf user %</label>
-            <div className="flex items-center gap-3">
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={percentLowUser}
-                onChange={(e) => setPercentLowUser(parseInt(e.target.value, 10))}
-                className="w-full"
-              />
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={percentLowUser}
-                onChange={(e) => setPercentLowUser(clamp(parseFloat(e.target.value || "0")))}
-                className="w-20 border rounded p-1 text-sm"
-              />
-              <span className="text-sm text-slate-600">%</span>
-            </div>
-            <div className="text-xs text-slate-600">User-set low %: {percentLowUser.toFixed(0)}%</div>
-          </div>
-          <div className="space-y-2">
-            <label className="block text-sm font-medium">Low shelf effective %</label>
-            <div className="flex items-center gap-3">
-              <input type="range" min={0} max={100} value={lowEffectivePercent} readOnly className="w-full" />
-              <input type="number" value={lowEffectivePercent.toFixed(1)} readOnly className="w-20 border rounded p-1 text-sm bg-slate-50" />
-              <span className="text-sm text-slate-600">%</span>
-            </div>
-            <div className="text-xs text-slate-600">
-              Effective low % = user {percentLowUser.toFixed(0)}% + leak ({(lowShiftParams?.A ?? 0).toFixed(3)}×{percent.toFixed(
-                0
-              )}% + {(lowShiftParams?.b ?? 0).toFixed(3)}) ⇢ <b>{lowEffectivePercent.toFixed(1)}%</b>
-            </div>
-            <div className="text-xs text-slate-600">
-              Low PPFD ≈ {(params.A * lowEffectivePercent + params.b).toFixed(2)}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Inverse solve */}
-      <div className="space-y-2">
-        <label className="block text-sm font-medium">Inverse: target PPFD</label>
-        <div className="flex gap-2 items-center">
-          <input
-            type="number"
-            className="border rounded p-2 text-sm"
-            placeholder="e.g., 120"
-            onChange={(e) => {
-              const v = parseFloat(e.target.value || "0");
-              const pct = inverseSolve(v);
-              if (twoShelfMode && shelf !== "high") {
-                // Adjust low user % to reach target on the LOW shelf (holding HIGH constant)
-                // We back out required effective low %, then remove leakage portion.
-                const leak = (lowShiftParams?.A ?? 0) * percent + (lowShiftParams?.b ?? 0);
-                setPercentLowUser(clamp(pct - leak));
-              } else {
-                setPercent(pct);
-              }
-            }}
-          />
-          <span className="text-sm text-slate-500">→ % set to match</span>
-        </div>
-      </div>
-
-      {/* Spectrum card */}
-      <div className="border rounded-lg p-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-medium">Spectrum visualization (sum multiple CSVs)</div>
-            <div className="text-xs text-slate-500">
-              Upload one or more CSVs for this channel with columns: wavelength_nm, A, b. Values are interpreted as spectral photon
-              flux density in <b>μE/m²/s/nm</b> at the current set %.
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              type="file"
-              ref={fileInputRef}
-              multiple
-              onChange={(e) => {
-                const files = e.target.files;
-                if (files && files.length > 0) onCSVSelected(files);
-                if (fileInputRef.current) fileInputRef.current.value = ""; // reset for re-upload
-              }}
-              accept=".csv,text/csv"
-              className="hidden"
-            />
-            <button onClick={attachCSVPrompt} className="px-3 py-1.5 text-sm border rounded">
-              Add CSV(s)
-            </button>
-          </div>
-        </div>
-
-        {(spectrumSets?.length ?? 0) === 0 ? (
-          <div className="text-sm text-slate-500 mt-3">
-            No spectra added for <b>{channel}</b>. Click <i>Add CSV(s)</i> and select your calibration file(s) (e.g.,
-            CoolWhite_helios.csv). Files are saved locally in your browser with the preset.
-          </div>
-        ) : (
-          <div className="mt-3 space-y-3">
-            {/* Active sets list */}
-            <div className="flex flex-wrap gap-2 items-center text-sm">
-              {spectrumSets?.map((s) => (
-                <label key={s.id} className="flex items-center gap-1 border rounded px-2 py-1">
-                  <input
-                    type="checkbox"
-                    checked={s.enabled}
-                    onChange={(e) => toggleSetEnabled(s.id, e.target.checked)}
-                  />
-                  <span className="truncate max-w-[180px]" title={s.name}>{s.name}</span>
-                  <button className="ml-2 text-red-600" onClick={() => removeSet(s.id)} title="Remove">×</button>
-                </label>
-              ))}
-            </div>
-
-            {/* Integration controls */}
-            <div className="flex flex-wrap items-center gap-3 text-sm">
+            <div className="flex items-center gap-3 text-sm">
               <div>
-                Current %: <b>{selectedShelfPercent.toFixed(1)}%</b>
+                PPFD ≈ <b>{ppfd.toFixed(2)}</b>
               </div>
-              <div className="flex items-center gap-2">
-                <span>Integrate</span>
-                <input
-                  type="number"
-                  value={nmMin}
-                  onChange={(e) => setNmMin(parseFloat(e.target.value || "400"))}
-                  className="w-20 border rounded p-1 text-sm"
-                />
-                <span>–</span>
-                <input
-                  type="number"
-                  value={nmMax}
-                  onChange={(e) => setNmMax(parseFloat(e.target.value || "700"))}
-                  className="w-20 border rounded p-1 text-sm"
-                />
-                <span>nm</span>
-              </div>
-              <div>
-                PAR {Math.min(nmMin, nmMax)}–{Math.max(nmMin, nmMax)} nm (∫ φ(λ) dλ): <b>{parIntegrated.toFixed(2)}</b> μE/m²/s
-              </div>
-            </div>
-
-            {/* Chart */}
-            <div className="h-72 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="wavelength" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(v) => `${v} nm`} allowDecimals />
-                  <YAxis domain={[0, 3.6]} tickFormatter={(v) => `${v}`} label={{ value: "μE/m²/s/nm", angle: -90, position: "insideLeft" }} />
-                  <Tooltip formatter={(v: any) => [`${(v as number).toFixed(3)} μE/m²/s/nm`, "Value"]} labelFormatter={(l) => `${l} nm`} />
-                  {/* Component lines */}
-                  {componentSeries.map((s, idx) => (
-                    <Line key={s.name + idx} data={s.data} dataKey="value" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" />
-                  ))}
-                  {/* Combined line */}
-                  <Line data={combinedData} dataKey="value" name="SUM" dot={false} type="monotone" strokeWidth={2} />
-                </LineChart>
-              </ResponsiveContainer>
+              <div className="text-slate-500">(from {params.A.toFixed(4)}×% + {params.b.toFixed(4)})</div>
             </div>
           </div>
         )}
-      </div>
 
-      <div className="text-xs text-slate-500">
-        Presets and attached CSVs are stored locally in your browser (no server). To share with colleagues, export your preset JSON
-        from DevTools localStorage key <code>ppfd.presets.v2</code>. CSV parsing expects numeric values; rows with missing values are
-        skipped. Units: PPFD from the linear model; spectrum is treated as <b>μE/m²/s/nm</b> and the integral returns <b>μE/m²/s</b>.
-      </div>
-    </div>
+        {twoShelfMode && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">High shelf %</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={percent}
+                  onChange={(e) => setPercent(parseInt(e.target.value, 10))}
+                  className="w-full" />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={percent}
+                  onChange={(e) => setPercent(clamp(parseFloat(e.target.value || "0")))}
+                  className="w-20 border rounded p-1 text-sm" />
+                <span className="text-sm text-slate-600">%</span>
+              </div>
+              <div className="text-xs text-slate-600">High PPFD ≈ {(params.A * percent + params.b).toFixed(2)}</div>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Low shelf user %</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={percentLowUser}
+                  onChange={(e) => setPercentLowUser(parseInt(e.target.value, 10))}
+                  className="w-full" />
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={percentLowUser}
+                  onChange={(e) => setPercentLowUser(clamp(parseFloat(e.target.value || "0")))}
+                  className="w-20 border rounded p-1 text-sm" />
+                <span className="text-sm text-slate-600">%</span>
+              </div>
+              <div className="text-xs text-slate-600">User-set low %: {percentLowUser.toFixed(0)}%</div>
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium">Low shelf effective %</label>
+              <div className="flex items-center gap-3">
+                <input type="range" min={0} max={100} value={lowEffectivePercent} readOnly className="w-full" />
+                <input type="number" value={lowEffectivePercent.toFixed(1)} readOnly className="w-20 border rounded p-1 text-sm bg-slate-50" />
+                <span className="text-sm text-slate-600">%</span>
+              </div>
+              <div className="text-xs text-slate-600">
+                Effective low % = user {percentLowUser.toFixed(0)}% + leak ({(lowShiftParams?.A ?? 0).toFixed(3)}×{percent.toFixed(
+                  0
+                )}% + {(lowShiftParams?.b ?? 0).toFixed(3)}) ⇢ <b>{lowEffectivePercent.toFixed(1)}%</b>
+              </div>
+              <div className="text-xs text-slate-600">
+                Low PPFD ≈ {(params.A * lowEffectivePercent + params.b).toFixed(2)}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Inverse solve */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Inverse: target PPFD</label>
+          <div className="flex gap-2 items-center">
+            <input
+              type="number"
+              className="border rounded p-2 text-sm"
+              placeholder="e.g., 120"
+              onChange={(e) => {
+                const v = parseFloat(e.target.value || "0");
+                const pct = inverseSolve(v);
+                if (twoShelfMode && shelf !== "high") {
+                  // Adjust low user % to reach target on the LOW shelf (holding HIGH constant)
+                  // We back out required effective low %, then remove leakage portion.
+                  const leak = (lowShiftParams?.A ?? 0) * percent + (lowShiftParams?.b ?? 0);
+                  setPercentLowUser(clamp(pct - leak));
+                } else {
+                  setPercent(pct);
+                }
+              } } />
+            <span className="text-sm text-slate-500">→ % set to match</span>
+          </div>
+        </div>
+
+        {/* Spectrum card */}
+        <div className="border rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="font-medium">Spectrum visualization (sum multiple CSVs)</div>
+              <div className="text-xs text-slate-500">
+                Upload <b>one or more</b> CSVs for this channel with columns: wavelength_nm, A, b. Values are interpreted as spectral photon flux density in <b>μE/m²/s/nm</b> at the current set %.
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="file"
+                ref={fileInputRef}
+                multiple
+                onChange={(e) => {
+                  const files = e.target.files;
+                  if (files && files.length > 0) onCSVSelected(files);
+                  if (fileInputRef.current) fileInputRef.current.value = ""; // reset for re-upload
+                } }
+                accept=".csv,text/csv"
+                className="hidden" />
+              <button onClick={attachCSVPrompt} className="px-3 py-1.5 text-sm border rounded">
+                Add CSV(s)
+              </button>
+            </div>
+          </div>
+
+          {(spectrumSets?.length ?? 0) === 0 ? (
+            <div className="text-sm text-slate-500 mt-3">
+              No spectra added for <b>{channel}</b>. Click <i>Add CSV(s)</i> and select your calibration file(s) (e.g.,
+              CoolWhite_helios.csv). Files are saved locally in your browser with the preset.
+            </div>
+          ) : (
+            <div className="mt-3 space-y-3">
+              {/* Active sets list */}
+              <div className="flex flex-wrap gap-2 items-center text-sm">
+                {spectrumSets?.map((s) => (
+                  <label key={s.id} className="flex items-center gap-1 border rounded px-2 py-1">
+                    <input
+                      type="checkbox"
+                      checked={s.enabled}
+                      onChange={(e) => toggleSetEnabled(s.id, e.target.checked)} />
+                    <span className="truncate max-w-[180px]" title={s.name}>{s.name}</span>
+                    <button className="ml-2 text-red-600" onClick={() => removeSet(s.id)} title="Remove">×</button>
+                  </label>
+                ))}
+              </div>
+
+              {/* Integration controls */}
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <div>
+                  Current %: <b>{selectedShelfPercent.toFixed(1)}%</b>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>Integrate</span>
+                  <input
+                    type="number"
+                    value={nmMin}
+                    onChange={(e) => setNmMin(parseFloat(e.target.value || "400"))}
+                    className="w-20 border rounded p-1 text-sm" />
+                  <span>–</span>
+                  <input
+                    type="number"
+                    value={nmMax}
+                    onChange={(e) => setNmMax(parseFloat(e.target.value || "700"))}
+                    className="w-20 border rounded p-1 text-sm" />
+                  <span>nm</span>
+                </div>
+                <div>
+                  Reference PAR {Math.min(nmMin, nmMax)}–{Math.max(nmMin, nmMax)} nm (∫ φ(λ) dλ): <b>{parIntegrated.toFixed(2)}</b> μE/m²/s
+                </div>
+              </div>
+
+              {/* Chart */}
+              <div className="h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="wavelength" type="number" domain={["dataMin", "dataMax"]} tickFormatter={(v) => `${v} nm`} allowDecimals />
+                    <YAxis domain={[0, 3.6]} tickFormatter={(v) => `${v}`} label={{ value: "μE/m²/s/nm", angle: -90, position: "insideLeft" }} />
+                    <Tooltip formatter={(v: any) => [`${(v as number).toFixed(3)} μE/m²/s/nm`, "Value"]} labelFormatter={(l) => `${l} nm`} />
+                    {/* Component lines */}
+                    {componentSeries.map((s, idx) => (
+                      <Line key={s.name + idx} data={s.data} dataKey="value" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" />
+                    ))}
+                    {/* Combined line */}
+                    <Line data={combinedData} dataKey="value" name="SUM" dot={false} type="monotone" strokeWidth={2} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="text-xs text-slate-500">
+          Presets and attached CSVs are stored locally in your browser (no server). CSV parsing expects numeric values; rows with missing values are skipped. Units: PPFD from the linear model; spectrum is treated as <b>μE/m²/s/nm</b> and the integral returns <b>μE/m²/s</b>.
+        </div>
+      </div></>
+      
   );
 }

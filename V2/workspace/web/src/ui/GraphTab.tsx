@@ -358,10 +358,10 @@ export default function GraphTab() {
   return (
     <div className="card" style={{ overflow: "visible" }} key={hardKey}>
       <div className="label" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <span>Graph</span>
-        <div className="hstack" style={{ gap: 8 }}>
-          <button className="btn" onClick={() => setDrafts(new Map())} title="Discard all unsaved edits">Discard</button>
-          <button className="btn primary" onClick={saveDraftsToEditor} title="Apply to Editor + Legacy">Save to Editor</button>
+        <span><b>Graph Controls:</b></span>
+        <div className="hstack" style={{ display: "flex", gap: 15 }}>
+          <button style={{padding: "6px 12px",border: "1px solid grey",borderRadius: "4px",background: "grey",color: "white",cursor: "pointer", fontWeight:600}} onClick={() => setDrafts(new Map())} title="Discard all unsaved edits">Discard</button>
+          <button style={{padding: "6px 12px",border: "1px solid lightgreen",borderRadius: "4px",background: "lightgreen",color: "black",cursor: "pointer", fontWeight:600}} onClick={saveDraftsToEditor} title="Apply to Editor + Legacy">Save to Editor</button>
         </div>
       </div>
 

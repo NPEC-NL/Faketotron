@@ -57,19 +57,18 @@ export default function App() {
         style={{ display: tab === "editor" ? "block" : "none", marginBottom: 12 }}
       >
         <div style={{ marginBottom: 8 }}>
-          <FilesToolbar />
         </div>
         <EditorTab />
       </div>
 
       <div
         ref={graphRef}
-        style={{ display: tab === "graph" ? "block" : "none", marginBottom: 12 }}
+        style={{ display: tab === "graph" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}
       >
         <GraphTab />
       </div>
 
-      <div ref={lightRef} style={{ display: tab === "light" ? "block" : "none" }}>
+      <div ref={lightRef} style={{ display: tab === "light" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <LightTools />
       </div>
     </div>
