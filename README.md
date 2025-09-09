@@ -71,6 +71,12 @@ To edit phases here, click at the starting endpoint circle, then edit the values
 
 **Warning: There's no range limit check in this visual editor.** It is more recommended to edit in the Editor tab. Meanwhile, the tempreature value is shown as temperature * 10 (e.g. Value 210 means 21.0 °C)
 
+## Grouped Actions
+You can perform grouped actions (copy-pasting, moving) by selecting multiple phases. Copying multiple phases cross different variable groups (e.g. copy Cool White phases to Deep Red) and even different protocols is also possible. ![Grouped Actions](5.gif)
+
+Auto range check and wrapping will be done when performing cross-group pasting: For example, if you're trying to copy CO2's 300 (ppm) to Lights' 0-100 (%) range, it will auto wrap it to 100. *Note: temperature is stored as temp×10 for the digit after dot (e.g. 30.2℃ is stored at 302). It's in this way to match the PSI machine. That means copying a 30.2 (℃) to other variable groups will result in value = 302.*
+
+
 ## Light Tools
 
 You can switch to Light Tools tab to calculate the **machine setpoint (%) to standard unit (μE/m²/s/nm)**.
@@ -110,4 +116,4 @@ You can add the measurement files from `/Light Calibrations` to visualize the li
 
 # Development
 
-See `/V2/README.md`
+For wrapping customized V1 into V2 and editing Light Tool preset, see `/V2/README.md`
