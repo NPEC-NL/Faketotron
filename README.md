@@ -25,7 +25,7 @@ This project is licensed under a custom **BSD-3-Clause Academic Use License**.
 This is **not** the standard BSD 3-Clause license — it includes a non-commercial restriction.  
 See [LICENSE](LICENSE) for details.
 
-# User Guide (v1.4)
+# User Guide (v2)
 Faketotron is a mock Fytotron Client's protocol editor. You can use it to customize your experiment protocol before we load it to the PSI instruments, including ME Chambers, Helios and Hades. It's a html based interface that can be opened with any browser.
 
 You can create any customized protocol with the interface, and download the configuration files (a machine readable .fyt file that can be loaded directly into the PSI systems, and a human-readable .json file for debugging). You can also Load .fyt file back to visualize.
@@ -50,11 +50,10 @@ Similarly, we can set the CO2 level (ppm) changes as such, or set up watering sc
 
 2. Select the desired Profile (i.e. Chamber type) at top right corner from the scroll-down, then click NEW under Protocol File at right panel. (Note: Hades i.e. Hotel is here only for demonstration. Always contact m.pereiramendes@uu.nl for possibilities first.)
 
-![Profile scroll-down](content_005.webp)
-<table><colgroup><col><col><col></colgroup><thead><tr><th><p>Faketotron Profile</p></th><th><p>Applies to</p></th><th><p>Code in Fytotron Client</p></th></tr></thead><tbody><tr><td><p>Fytotron (default)</p></td><td><p>Standard Chambers (PSI 1), Helios (PSI 5)</p></td><td><p>Chamber S., HeliosFyto</p></td></tr><tr><td><p>Extended Temperature</p></td><td><p>Extended Temperature Chambers (PSI 2)</p></td><td><p>Chamber T.</p></td></tr><tr><td><p>Daylight</p></td><td><p>Daylight Simulation Chambers (PSI 3)</p></td><td><p>Chamber D.</p></td></tr><tr><td><p>Hotel</p></td><td><p>Hades Growth rooms (PSI 4)</p></td><td><p>HadesFyto</p></td></tr></tbody></table>
+<table><colgroup><col><col><col></colgroup><thead><tr><th><p>Faketotron Profile</p></th><th><p>Applies to</p></th><th><p>Code in Fytotron Client</p></th></tr></thead><tbody><tr><td><p>Fytotron (default)</p></td><td><p>Standard Chambers (PSI 1), Helios (PSI 5)</p></td><td><p>Chamber S.</p></td></tr><tr><td><p>Helios Growth</p></td><td><p>Helios Growth room (PSI 5)</p></td><td><p>HeliosFyto</p></td></tr><tr><td><p>Extended Temperature</p></td><td><p>Extended Temperature Chambers (PSI 2)</p></td><td><p>Chamber T.</p></td></tr><tr><td><p>Daylight</p></td><td><p>Daylight Simulation Chambers (PSI 3)</p></td><td><p>Chamber D.</p></td></tr><tr><td><p>Hotel</p></td><td><p>Hades Growth rooms (PSI 4)</p></td><td><p>HadesFyto</p></td></tr></tbody></table>
 
 3. Create groups and assign variables to groups, or use default settings. Create group only if you need different settings for **_different parts/zones_** of the chamber (e.g. upper shelf vs. lower shelf) for the **_same variable type_**. > For example, if you want different Cool White light intensity for upper and lower shelf, you first need to create another Cool White type of group, then click **Move to** button on the first group to move it to this new group. Click **OK at bottom left corner** to confirm.
-![Group and Variable management popup](content_006.webp)
+![Group and Variable management popup](1.gif)
 You can always edit groups and re-assign variables later, using the button at top left corner. Note that **empty groups will be removed automatically when you click OK.**
 
 4. Click Add Phase to add phases (treatments) for each group. The phases run by the # order. Drag rows to reorder.
@@ -65,29 +64,21 @@ You can always edit groups and re-assign variables later, using the button at to
 
 7. Click Load.. to load only .fyt files. Note that you need to change the Profile type on the scroll-down above it to make sure it matches with the .fyt file to load, otherwise it will raise an error.
 
-## Light Intensity Conversion
+## Graph Tab
+Graph tab provides a visualization of the current protocol and allows you to edit the protocol in a visualized manner.
 
-The conversion from **% to SI (μE/m²/s/nm) is Linear** (with R2 > 0.98). To convert PPFD to percentage, use: 
+To edit phases here, click at the starting endpoint circle, then edit the values at the panel. Click Save to Editor after you finish. Note: switching between Editor and Graph can discard the unsave changes. ![Visualized Editing](2.gif)
 
-<p align="center"><b>(PPFD - b) / A</b></p>
+**Warning: There's no range limit check in this visual editor.** It is more recommended to edit in the Editor tab. Meanwhile, the tempreature value is shown as temperature * 10 (e.g. Value 210 means 21.0 °C)
 
+## Light Tools
 
-- This function work with larger error at less than 10%, but no larger than 2%.
-- **For Cool White, PPFD is calculated between 400-700 nm. For single color channels, PPFD is calculated based on their wavelength.** See Variable Meanings section.
-- These parameters are measured at the height of the shelves. If you are adding too much extra height (e.g. using high boxes or pots), the values can be higher than what you need. In this case, please contact us to do an extra measurement.
+You can switch to Light Tools tab to calculate the **machine setpoint (%) to standard unit (μE/m²/s/nm)**.
 
-### Standard & Extended Temperature Chambers
+For chambers that has 2 shelves, we calculate the leakge from high to low base on the high shelf settings. ![Leakage](3.gif)
 
-Due to light leakage from higher shelf to lower shelf, the lower shelf has larger PPFD values. Note that this table is measured by setting the same percentage for both shelves (e.g. measure at 20% high and 20% low, the low gets 20%+20%*leakage), which means the values can slightly vary if high and low shelves are set with different values.
+You can add the measurement files from `/Light Calibrations` to visualize the light curves by each channel. ![Visualization per channel](4.gif).
 
-<table><colgroup><col><col><col></colgroup><thead><tr><th>High Shelf</th><th>b</th><th>A</th></tr></thead><tbody><tr><td>Cool White</td><td>6.95239179</td><td>4.75930888</td></tr><tr><td>Deep Red</td><td>0.29237353</td><td>0.2068177175</td></tr><tr><td>Far Red</td><td>2.18807104</td><td>0.645981561</td></tr><tr><td><strong>Low Shelf</strong></td><td><strong>b</strong></td><td><strong>A</strong></td></tr><tr><td>Cool White</td><td>10.04182487</td><td>5.0786547</td></tr><tr><td>Deep Red</td><td>0.301973515</td><td>0.214909337</td></tr><tr><td>Far Red</td><td>2.290500342</td><td>0.667271879</td></tr></tbody></table>
-
-### Daylight Chambers
-
-<table><colgroup><col><col><col></colgroup><thead><tr><th>Type</th><th>b</th><th>A</th></tr></thead><tbody><tr><td>Cool White</td><td>18.77992866</td><td>4.57636951</td></tr><tr><td>Blue</td><td>3.15987222</td><td>0.131850676</td></tr><tr><td>Cyan</td><td>1.67421176</td><td>0.106566941</td></tr><tr><td>Green</td><td>1.483437</td><td>0.060262099</td></tr><tr><td>Amber</td><td>0.21777367</td><td>0.041825071</td></tr><tr><td>Red</td><td>-0.25071553</td><td>0.2317047152</td></tr><tr><td>Deep Red</td><td>0.98515142</td><td>0.268161697</td></tr><tr><td>Far Red</td><td>1.37220917</td><td>0.222236239</td></tr><tr><td>UVA</td><td>0.025462488</td><td>0.021131864</td></tr></tbody></table>
-
-### Helios
-TBA due to ongoing experiments
 
 ## Important Notes:
 - **Variable 2 refer to the Higher shelf.** For example, CoolWhite2 or DeepRed2 is for the settings on the higher shelf, while CoolWhite is for the lower shelf.
@@ -116,3 +107,7 @@ TBA due to ongoing experiments
 - Although PSI is actually storing times in second level precision (hh:mm:ss), you cannot edit it in their own Fytotron Client™ application. You can do it at Faketotron and the machines can still execute the protocols at second level, but if you need to edit it on the machines, the seconds will be dropped.
 - Since PSI didn't reveal the formula for Cloud phases, there's no visualization. If you are considering using cloud phase, please contact v.meline@uu.nl for more details.
 ![Visualization of a Cloud phase (screenshot from Fytotron Client)](content.webp)
+
+# Development
+
+See `/V2/README.md`
