@@ -276,7 +276,7 @@ export default function EditorTab() {
           ref={iframeRef}
           srcDoc={srcDoc}
           style={{ width: "100%", height: 900, border: "0" }}
-          sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups"
+          sandbox="allow-same-origin allow-scripts allow-forms allow-modals allow-popups allow-downloads"
         />
       </div>
     </div>
