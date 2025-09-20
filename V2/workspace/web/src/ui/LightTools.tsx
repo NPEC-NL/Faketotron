@@ -19,6 +19,7 @@ type Preset = {
 
 
 type SpectrumRow = { wavelength: number; value: number };
+type PercentRow  = { percent: number; value: number };
 
 // ===== Default data (existing calibration) =====
 // Updated to show G4–G8 presets. G4 retains the existing two-shelf calibration
@@ -29,21 +30,11 @@ const DEFAULT_PRESETS: Preset[] = [
     name: "G4",
     profile: "Fytotron",
     shelves: {
-      high: {
+      single: {
         channels: {
           coolWhite: { A: 4.75930888, b: 6.95239179 },
           deepRed: { A: 0.2068177175, b: 0.29237353 },
           farRed: { A: 0.645981561, b: 2.18807104 },
-        },
-      },
-      // Low shelf receives its own set percentage PLUS a leakage shift from the high shelf.
-      // The A/b here define how much of the HIGH shelf setpoint leaks into LOW (percent space).
-      // Effective LOW % = clamp( low_user% + (A*high_user% + b), 0..100 )
-      lowshifted: {
-        channels: {
-          coolWhite: { A: 0.2061208, b: 1.18077098 },
-          deepRed: { A: 0.00809161908, b: 0.009599985 },
-          farRed: { A: 0.021290318316, b: 0.102429302 },
         },
       },
     },
@@ -463,6 +454,32 @@ export default function LightTools() {
     [JSON.stringify(perChannelSets)]
   );
 
+  // ===== New: PPFD vs device % chart data =====
+  // Build per-channel PPFD curves using calibration PPFD(%) = A * % + b
+  const percentSeries = useMemo(() => {
+    const series = [] as { name: string; data: PercentRow[] }[];
+    const steps = Array.from({ length: 101 }, (_, i) => i); // 0..100 inclusive
+    for (const ch of activeChannels) {
+      const { A, b } = paramsFor(ch);
+      const data: PercentRow[] = steps.map((p) => ({ percent: p, value: A * p + b }));
+      series.push({ name: ch, data });
+    }
+    return series;
+  }, [activeChannels.join("|"), presetIndex, shelf, twoShelfMode, presets]);
+
+  // Total PPFD curve = sum of all active channels at each %
+  const totalPercentData: PercentRow[] = useMemo(() => {
+    const steps = Array.from({ length: 101 }, (_, i) => i);
+    return steps.map((p) => {
+      let sum = 0;
+      for (const ch of activeChannels) {
+        const { A, b } = paramsFor(ch);
+        sum += A * p + b;
+      }
+      return { percent: p, value: sum };
+    });
+  }, [activeChannels.join("|"), presetIndex, shelf, twoShelfMode, presets]);
+
 
   // Integration range (nm) & result
   const [nmMin, setNmMin] = useState<number>(400);
@@ -799,6 +816,44 @@ export default function LightTools() {
 
       <div className="text-xs text-slate-500">
         Presets and attached CSVs are stored locally in your browser (no server). Switching shelves or presets clears the working mix and CSVs because they are considered separate settings.
+      </div>
+
+      {/* New: PPFD vs device % */}
+      <div className="border rounded-lg p-3 mt-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="font-medium">PPFD vs device %</div>
+            <div className="text-xs text-slate-500">
+              Uses calibration A/b for the currently selected preset and shelf. Channel lines are dashed; total is solid.
+            </div>
+          </div>
+        </div>
+
+        {activeChannels.length === 0 ? (
+          <div className="text-sm text-slate-500 mt-3">No active channels. Add channels to view PPFD curves.</div>
+        ) : (
+          <div className="h-72 w-full mt-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="percent" type="number" domain={[0, 100]} tickFormatter={(v) => `${v}%`} allowDecimals={false} />
+                <YAxis tickFormatter={(v) => `${v}`} label={{ value: "µmol/m²/s", angle: -90, position: "insideLeft" }} />
+                <Tooltip
+                  formatter={(v: any) => [`${(v as number).toFixed(2)} µmol/m²/s`, "Value"]}
+                  labelFormatter={(l) => `${l}%`}
+                />
+
+                {/* Per-channel dashed curves */}
+                {percentSeries.map((s) => (
+                  <Line key={s.name} data={s.data} dataKey="value" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" />
+                ))}
+
+                {/* Total PPFD solid curve */}
+                <Line data={totalPercentData} dataKey="value" name="Total PPFD" dot={false} type="monotone" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          </div>
+        )}
       </div>
     </div>
   );
