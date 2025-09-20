@@ -261,177 +261,63 @@ window.addEventListener('load', function() {
 /* ============================================================
    PROJECT CONSTANTS / MAPPINGS
    ============================================================ */
-// Base (G4) adapted to provided legacy G4.fyt (unprefixed light vars, DeepRed/FarRed names, adds UVB, no Hydroponics)
-const TAB_ORDER=["CO2","Cool White","DeepRed","FarRed","Humidity","Temperature","UVB"];
-const INVENTORY={
-  "CO2":["CO2_Set"],
-  "Cool White":["CoolWhite"],
-  "DeepRed":["DeepRed"],
-  "FarRed":["FarRed"],
-  "Humidity":["Rh_Set"],
-  "Temperature":["T_Set"],
-  "UVB":["UVB"]
-};
-const MACHINE_VAR={
-  "CO2":{"CO2_Set":"CO2_Set"},
-  "Cool White":{"CoolWhite":"CoolWhite"},
-  "DeepRed":{"DeepRed":"DeepRed"},
-  "FarRed":{"FarRed":"FarRed"},
-  "Humidity":{"Rh_Set":"Rh_Set"},
-  "Temperature":{"T_Set":"T_Set"},
-  "UVB":{"UVB":"UVB"}
-};
-const TYPE_UNIT={
-  "CO2":{type:"co2",unit:"ppm"},
-  "Cool White":{type:"cool-white",unit:"percent"},
-  "DeepRed":{type:"deep-red",unit:"percent"},
-  "FarRed":{type:"far-red",unit:"percent"},
-  "Humidity":{type:"humidity",unit:"percent"},
-  "Temperature":{type:"temperature",unit:"celsius"},
-  "UVB":{type:"uvb",unit:"percent"}
-};
+const TAB_ORDER=["CO2","Cool White","Deep-Red","Far-Red","Humidity","Hydroponics","Temperature"];
+const INVENTORY={"CO2":["CO2"],"Cool White":["Cool White 1","Cool White 2"],"Deep-Red":["Deep-Red 1","Deep-Red 2"],"Far-Red":["Far-Red 1","Far-Red 2"],"Humidity":["Humidity"],"Hydroponics":["Hydroponics 1","Hydroponics 2"],"Temperature":["Temperature"]};
+const MACHINE_VAR={"CO2":{"CO2":"CO2_Set"},"Cool White":{"Cool White 1":"CoolWhite1","Cool White 2":"CoolWhite2"},"Deep-Red":{"Deep-Red 1":"DeepRed1","Deep-Red 2":"DeepRed2"},"Far-Red":{"Far-Red 1":"FarRed1","Far-Red 2":"FarRed2"},"Humidity":{"Humidity":"Rh_Set"},"Hydroponics":{"Hydroponics 1":"Run1","Hydroponics 2":"Run2"},"Temperature":{"Temperature":"T_Set"}};
+const TYPE_UNIT={"CO2":{type:"co2",unit:"ppm"},"Cool White":{type:"white",unit:"percent"},"Deep-Red":{type:"deep-red",unit:"percent"},"Far-Red":{type:"far-red",unit:"percent"},"Humidity":{type:"humidity",unit:"percent"},"Hydroponics":{type:"hydroponie",unit:""},"Temperature":{type:"temperature",unit:"celsius"}};
 
 const RANGES={
   "CO2":{min:0,max:1000,int:true},
   "Cool White":{min:0,max:100,int:true},
-  "DeepRed":{min:0,max:100,int:true},
-  "FarRed":{min:0,max:100,int:true},
+  "Deep-Red":{min:0,max:100,int:true},
+  "Far-Red":{min:0,max:100,int:true},
   "Humidity":{min:35,max:90,int:true},
-  "Temperature":{min:0,max:500,int:true,scale:10},
-  "UVB":{min:0,max:100,int:true}
+  "Hydroponics":{min:0,max:1,int:true},
+  "Temperature":{min:0,max:500,int:true,scale:10}
 };
 const DEF={
   const:{
     "CO2":{value:1000,duration:"01:00:00"},
     "Cool White":{value:100,duration:"01:00:00"},
-    "DeepRed":{value:100,duration:"01:00:00"},
-    "FarRed":{value:100,duration:"01:00:00"},
+    "Deep-Red":{value:100,duration:"01:00:00"},
+    "Far-Red":{value:100,duration:"01:00:00"},
     "Humidity":{value:90,duration:"01:00:00"},
-    "Temperature":{value:40,duration:"01:00:00"},
-    "UVB":{value:0,duration:"01:00:00"}
+    "Hydroponics":{value:1,duration:"01:00:00"},
+    "Temperature":{value:40,duration:"01:00:00"}
   },
   ramp:{
     "CO2":{start:0,end:1000,duration:"01:00:00"},
     "Cool White":{start:0,end:100,duration:"01:00:00"},
-    "DeepRed":{start:0,end:100,duration:"01:00:00"},
-    "FarRed":{start:0,end:100,duration:"01:00:00"},
+    "Deep-Red":{start:0,end:100,duration:"01:00:00"},
+    "Far-Red":{start:0,end:100,duration:"01:00:00"},
     "Humidity":{start:35,end:90,duration:"01:00:00"},
-    "Temperature":{start:10,end:40,duration:"01:00:00"},
-    "UVB":{start:0,end:100,duration:"01:00:00"}
+    "Temperature":{start:10,end:40,duration:"01:00:00"}
   },
   sin:{
     "CO2":{min:0,max:1000,period:"00:10:00",phaseOffset:"00:00:00",duration:"01:00:00"},
     "Cool White":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "DeepRed":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "FarRed":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
+    "Deep-Red":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
+    "Far-Red":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
     "Humidity":{min:35,max:90,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "Temperature":{min:10,max:40,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "UVB":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"}
+    "Temperature":{min:10,max:40,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"}
   },
   cloud:{
-    "CO2":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Cool White":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "DeepRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "FarRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Humidity":{amplitude:90,offset:35,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Temperature":{amplitude:10,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "UVB":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"}
+    "CO2":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
+    "Cool White":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
+    "Deep-Red":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
+    "Far-Red":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
+    "Humidity":{amplitude:90,offset:35,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
+    "Temperature":{amplitude:10,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio: (Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"}
   }
 };
-
 
 // Fixed ramp step for all ramp phases
 const RAMP_STEP = "00:00:05";
 // === Profiles (external JSONs injected) ===
 /* We embed provided profile JSONs here. "Fytotron" uses the base constants declared above. */
 
-const PROFILE_JSONS = {
-    "G4": {
-    "description": "Profile: G4 (legacy vars, empty phases)",
-    "repeat": 2147483647,
-    "logic": "23:00:00",
-    "sections": [{
-      "parts": [
-        {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []},
-        {"group-name": "Cool White", "type": "cool-white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite"], "phases": []},
-        {"group-name": "DeepRed", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed"], "phases": []},
-        {"group-name": "FarRed", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed"], "phases": []},
-        {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []},
-        {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []},
-        {"group-name": "UVB", "type": "uvb", "union-tag": "fytotron", "unit": "percent", "vars": ["UVB"], "phases": []}
-      ]
-    }]
-    },
-    "G5": {
-    "description": "Profile: G5 (legacy vars)",
-    "repeat": 2147483647,
-    "logic": "",
-    "sections": [{
-      "parts": [
-        {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []},
-        {"group-name": "Cool White", "type": "cool-white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite"], "phases": []},
-        {"group-name": "DeepRed", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed"], "phases": []},
-        {"group-name": "FarRed", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed"], "phases": []},
-        {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []},
-        {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []},
-        {"group-name": "UVB", "type": "uvb", "union-tag": "fytotron", "unit": "percent", "vars": ["UVB"], "phases": []}
-      ]
-    }]
-    },
-    "G6": {
-    "description": "Profile: G6 (legacy multi-channel, empty phases)",
-    "repeat": 2147483647,
-    "logic": "08:00:00",
-    "sections": [{
-      "parts": [
-        {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []},
-        {"group-name": "Cool White", "type": "white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite1","CoolWhite2","CoolWhite3","CoolWhite4","CoolWhite5","CoolWhite6"], "phases": []},
-        {"group-name": "FarRed", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed1","FarRed2","FarRed3","FarRed4","FarRed5","FarRed6"], "phases": []},
-        {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []},
-        {"group-name": "Red", "type": "red", "union-tag": "fytotron", "unit": "percent", "vars": ["Red1","Red2","Red3","Red4","Red5","Red6"], "phases": []},
-        {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []},
-        {"group-name": "UVB", "type": "uvb", "union-tag": "fytotron", "unit": "percent", "vars": ["UVB"], "phases": []}
-      ]
-    }]
-    },
-    "G7": {
-    "description": "Profile: G7 (legacy vars)",
-    "repeat": 2147483647,
-    "logic": "07:00:00",
-    "sections": [{
-      "parts": [
-        {"group-name": "Amber", "type": "amber", "union-tag": "fytotron", "unit": "percent", "vars": ["Amber"], "phases": []},
-        {"group-name": "Blue", "type": "blue", "union-tag": "fytotron", "unit": "percent", "vars": ["Blue"], "phases": []},
-        {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []},
-        {"group-name": "Cool White", "type": "cool-white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite"], "phases": []},
-        {"group-name": "Cyan", "type": "cyan", "union-tag": "fytotron", "unit": "percent", "vars": ["Cyan"], "phases": []},
-        {"group-name": "DeepRed", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed"], "phases": []},
-        {"group-name": "FarRed", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed"], "phases": []},
-        {"group-name": "Green", "type": "green", "union-tag": "fytotron", "unit": "percent", "vars": ["Green"], "phases": []},
-        {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []},
-        {"group-name": "Red", "type": "red", "union-tag": "fytotron", "unit": "percent", "vars": ["Red"], "phases": []},
-        {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []},
-        {"group-name": "UVA", "type": "uva", "union-tag": "fytotron", "unit": "percent", "vars": ["UVA"], "phases": []}
-      ]
-    }]
-    },
-    "G8": {
-    "description": "Profile: G8 (legacy, empty phases)",
-    "repeat": 2147483647,
-    "logic": "06:00:00",
-    "sections": [{
-      "parts": [
-        {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []},
-        {"group-name": "Cool White", "type": "cool-white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite"], "phases": []},
-        {"group-name": "DeepRed", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed"], "phases": []},
-        {"group-name": "FarRed", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed"], "phases": []},
-        {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []},
-        {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []},
-        {"group-name": "UVB", "type": "uvb", "union-tag": "fytotron", "unit": "percent", "vars": ["UVB"], "phases": []}
-      ]
-    }]
-    }
-};
+const PROFILE_JSONS = {"Fytotron": null, "Daylight": {"description": "Profile: Daylight", "repeat": 2147483647, "logic": "", "sections": [{"parts": [{"group-name": "Amber", "type": "amber", "union-tag": "fytotron", "unit": "percent", "vars": ["Amber"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}, {"group-name": "Blue", "type": "blue", "union-tag": "fytotron", "unit": "percent", "vars": ["Blue"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}, {"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []}, {"group-name": "Cool White", "type": "white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite"], "phases": []}, {"group-name": "Cyan", "type": "cyan", "union-tag": "fytotron", "unit": "percent", "vars": ["Cyan"], "phases": [{"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}, {"group-name": "Deep-Red", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed"], "phases": []}, {"group-name": "Far-Red", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed"], "phases": []}, {"group-name": "Green", "type": "green", "union-tag": "fytotron", "unit": "percent", "vars": ["Green"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}, {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []}, {"group-name": "Hydroponics", "type": "hydroponie", "union-tag": "fytotron", "unit": "", "vars": ["Run1"], "phases": []}, {"group-name": "Red", "type": "red", "union-tag": "fytotron", "unit": "percent", "vars": ["Red"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}, {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []}, {"group-name": "UVA", "type": "uva", "union-tag": "fytotron", "unit": "percent", "vars": ["UVA"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": 0, "max": 100, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": 0, "end": 100, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 100, "duration": "01:00:00"}]}]}]}, "Extended Temperature": {"description": "Profile: Extended Temperature", "repeat": 2147483647, "logic": "", "sections": [{"parts": [{"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []}, {"group-name": "Cool White", "type": "white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite1", "CoolWhite2"], "phases": []}, {"group-name": "Deep-Red", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed1", "DeepRed2"], "phases": []}, {"group-name": "Far-Red", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed1", "FarRed2"], "phases": []}, {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []}, {"group-name": "Hydroponics", "type": "hydroponie", "union-tag": "fytotron", "unit": "", "vars": ["Run1", "Run2"], "phases": []}, {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": [{"type": "clouds", "duration": "01:00:00", "step": "00:00:05", "amplitude": 100, "offset": 0, "cloud_density": 0, "cloud_position": 0, "cloud_duration_mean": 60, "cloud_duration_var": 5, "fluctuation_mean_ratio": 0.15, "fluctuation_var": 10, "cloud_drop_coeff": 0.5}, {"type": "sin", "duration": "01:00:00", "step": "00:00:05", "min": -50, "max": 400, "period": "00:10:00", "phaseOffset": "00:00:00"}, {"type": "ramp", "start": -50, "end": 400, "duration": "01:00:00", "step": "00:00:05"}, {"type": "const", "value": 400, "duration": "01:00:00"}]}]}]}, "Hotel": {"description": "Profile: Hotel", "repeat": 2147483647, "logic": "", "sections": [{"parts": [{"group-name": "Cool White", "type": "white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite1", "CoolWhite2", "CoolWhite3", "CoolWhite4"], "phases": []}, {"group-name": "Deep-Red", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed1", "DeepRed2", "DeepRed3", "DeepRed4"], "phases": []}, {"group-name": "Far-Red", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed1", "FarRed2", "FarRed3", "FarRed4"], "phases": []}]}]}, "Helios growth": {"description": "", "repeat": 2147483647, "logic": "", "sections": [{"parts": [{"group-name": "CO2", "type": "co2", "union-tag": "fytotron", "unit": "ppm", "vars": ["CO2_Set"], "phases": []}, {"group-name": "Cool White", "type": "white", "union-tag": "fytotron", "unit": "percent", "vars": ["CoolWhite1"], "phases": []}, {"group-name": "Deep-Red", "type": "deep-red", "union-tag": "fytotron", "unit": "percent", "vars": ["DeepRed1"], "phases": []}, {"group-name": "Far-Red", "type": "far-red", "union-tag": "fytotron", "unit": "percent", "vars": ["FarRed1"], "phases": []}, {"group-name": "Humidity", "type": "humidity", "union-tag": "fytotron", "unit": "percent", "vars": ["Rh_Set"], "phases": []}, {"group-name": "Temperature", "type": "temperature", "union-tag": "fytotron", "unit": "celsius", "vars": ["T_Set"], "phases": []}]}]}};
+
 // Snapshot base constants so we can restore 'Fytotron'
 const BASE_CONSTS = {
   TAB_ORDER: JSON.parse(JSON.stringify(TAB_ORDER)),
