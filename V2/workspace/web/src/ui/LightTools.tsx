@@ -21,9 +21,12 @@ type Preset = {
 type SpectrumRow = { wavelength: number; value: number };
 
 // ===== Default data (existing calibration) =====
+// Updated to show G4–G8 presets. G4 retains the existing two-shelf calibration
+// and low-shift leakage. G5–G8 are single-shelf rooms using provided trendlines.
 const DEFAULT_PRESETS: Preset[] = [
+  // G4: preserve two-shelf Fytotron defaults
   {
-    name: "Two shelves General",
+    name: "G4",
     profile: "Fytotron",
     shelves: {
       high: {
@@ -45,35 +48,58 @@ const DEFAULT_PRESETS: Preset[] = [
       },
     },
   },
+  // G5
   {
-    name: "Daylight General",
-    profile: "Daylight",
+    name: "G5",
+    profile: "Room",
     shelves: {
       single: {
         channels: {
-          coolWhite: { A: 4.57636951, b: 18.77992866 },
-          blue: { A: 0.297167436225, b: 7.2744976875 },
-          cyan: { A: 0.239824355125, b: 3.8916245085 },
-          green: { A: 0.129337367075, b: 3.2390840145 },
-          amber: { A: 0.07438576425, b: 0.390141785 },
-          Red: { A: 0.46074158586, b: -0.5230835783 },
-          deepRed: { A: 0.49537750715, b: 2.37831835 },
-          farRed: { A: 0.37021777755, b: 1.37220917 },
-          UVA: { A: 0.286002788893, b: -0.12514097314 },
+          coolWhite: { A: 9.55, b: 15.39 },
+          deepRed: { A: 0.85, b: 0.96 },
+          farRed: { A: 0.01, b: 3.36 },
         },
       },
     },
   },
+  // G6 (note: provided "Red" mapped to deepRed channel)
   {
-    name: "Helios Growth Room",
-    profile: "Helios growth",
+    name: "G6",
+    profile: "Room",
     shelves: {
       single: {
         channels: {
-          // Updated A/b from your latest file
-          coolWhite: { A: 5.23046437365005, b: 10.034218074216131 },
-          deepRed: { A: 0.4498239934475001, b: 0.30144158965002354 },
-          farRed: { A: 0.7595520201830003, b: 2.293794068060037 },
+          coolWhite: { A: 13.47, b: -52.23 },
+          deepRed: { A: 5.12, b: -11.4 },
+          farRed: { A: 0.08, b: 1.56 },
+        },
+      },
+    },
+  },
+  // G7
+  {
+    name: "G7",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 7.27, b: 13.50 },
+          deepRed: { A: 0.93, b: -0.12 },
+          farRed: { A: 0.11, b: 0.45 },
+        },
+      },
+    },
+  },
+  // G8
+  {
+    name: "G8",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 20.12, b: 64.79 },
+          deepRed: { A: 0.96, b: 1.84 },
+          farRed: { A: 0.71, b: 18.08 },
         },
       },
     },

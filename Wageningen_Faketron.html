@@ -8,6 +8,91 @@
     />
     <title>Faketotron V2.0</title>
     <link rel="icon" type="image/png" href="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAAXNSR0IArs4c6QAAAYdJREFUWEftVjFuwzAMpN+QLWiWol/oLwxkzR/6j74lawD7FZ26dQiyJMjWN6iQAAoUS9lHJamXZnNM8Y68I+WOFv51C+PTP4HWDgSionv6GVa2hUDYXze0W58jSDwfQgjUdSmVO5/7QAR8PvT0/vqZSETwcRyp7/s/IxCBEonTdqBhGCS4WwpvByJAbr0QulkKD4EEzvp/P73Q6nIsfNAiBUogGy+2/uPtKxe/uhxT9UIKfgflhoK08ZiE7EAyRoMhUQLZeOx+HkEutwW8ZWzYhHrRJBmEQR+6iGRy99hZzGG2KlB2wyNlkQY5WGs7Qnw2/2xABcUi1ZQLOSR11m3nd5YBIX8gBNIIGg63POD2BULAuvvlfcAjqHPdtQNTXWBgd/WeRSS1loC6eitucloQCawEi36SIfMPx0x1oFal3gHyHpBXsRX3i9gcAekT1Af5gkQ+UucISJPppVOrtjDp/roJu/W5ioMQ0CNozTf6n1sCSXBqxFBfuAjATr4lsHUP3IJZnP0B6KuYITM8RzwAAAAASUVORK5CYII=" />
+    <!-- Seed Light Tools presets (G4–G8) so the app shows these by default -->
+    <script>
+      (function () {
+        try {
+          var presets = [
+            {
+              name: "G4",
+              profile: "Fytotron",
+              shelves: {
+                high: {
+                  channels: {
+                    coolWhite: { A: 4.75930888, b: 6.95239179 },
+                    deepRed: { A: 0.2068177175, b: 0.29237353 },
+                    farRed: { A: 0.645981561, b: 2.18807104 }
+                  }
+                },
+                lowshifted: {
+                  channels: {
+                    coolWhite: { A: 0.2061208, b: 1.18077098 },
+                    deepRed: { A: 0.00809161908, b: 0.009599985 },
+                    farRed: { A: 0.021290318316, b: 0.102429302 }
+                  }
+                }
+              }
+            },
+            {
+              name: "G5",
+              profile: "Room",
+              shelves: {
+                single: {
+                  channels: {
+                    coolWhite: { A: 9.55, b: 15.39 },
+                    deepRed: { A: 0.85, b: 0.96 },
+                    farRed: { A: 0.01, b: 3.36 }
+                  }
+                }
+              }
+            },
+            {
+              name: "G6",
+              profile: "Room",
+              shelves: {
+                single: {
+                  channels: {
+                    coolWhite: { A: 13.47, b: -52.23 },
+                    deepRed: { A: 5.12, b: -11.4 },
+                    farRed: { A: 0.08, b: 1.56 }
+                  }
+                }
+              }
+            },
+            {
+              name: "G7",
+              profile: "Room",
+              shelves: {
+                single: {
+                  channels: {
+                    coolWhite: { A: 7.27, b: 13.5 },
+                    deepRed: { A: 0.93, b: -0.12 },
+                    farRed: { A: 0.11, b: 0.45 }
+                  }
+                }
+              }
+            },
+            {
+              name: "G8",
+              profile: "Room",
+              shelves: {
+                single: {
+                  channels: {
+                    coolWhite: { A: 20.12, b: 64.79 },
+                    deepRed: { A: 0.96, b: 1.84 },
+                    farRed: { A: 0.71, b: 18.08 }
+                  }
+                }
+              }
+            }
+          ];
+          localStorage.setItem("ppfd.presets.v3", JSON.stringify(presets));
+          localStorage.removeItem("ppfd.presets.v2");
+        } catch (e) {
+          /* ignore */
+        }
+      })();
+    </script>
     <script type="module" crossorigin>(function(){const t=document.createElement("link").relList;if(t&&t.supports&&t.supports("modulepreload"))return;for(const i of document.querySelectorAll('link[rel="modulepreload"]'))r(i);new MutationObserver(i=>{for(const a of i)if(a.type==="childList")for(const o of a.addedNodes)o.tagName==="LINK"&&o.rel==="modulepreload"&&r(o)}).observe(document,{childList:!0,subtree:!0});function n(i){const a={};return i.integrity&&(a.integrity=i.integrity),i.referrerPolicy&&(a.referrerPolicy=i.referrerPolicy),i.crossOrigin==="use-credentials"?a.credentials="include":i.crossOrigin==="anonymous"?a.credentials="omit":a.credentials="same-origin",a}function r(i){if(i.ep)return;i.ep=!0;const a=n(i);fetch(i.href,a)}})();var kl=typeof globalThis<"u"?globalThis:typeof window<"u"?window:typeof global<"u"?global:typeof self<"u"?self:{};function Ae(e){return e&&e.__esModule&&Object.prototype.hasOwnProperty.call(e,"default")?e.default:e}var Rx={exports:{}},Wu={},Lx={exports:{}},de={};/**
  * @license React
  * react.production.min.js
