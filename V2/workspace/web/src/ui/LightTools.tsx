@@ -34,9 +34,9 @@ const DEFAULT_PRESETS: Preset[] = [
     shelves: {
       single: {
         channels: {
-          coolWhite: { A: 4.75930888, b: 6.95239179 },
-          deepRed: { A: 0.2068177175, b: 0.29237353 },
-          farRed: { A: 0.645981561, b: 2.18807104 },
+          coolWhite: { A: 11.08, b: 14.57 },
+          deepRed: { A: 1.56, b: - 3.13 },
+          farRed: { A: 0.28, b: 1.76 },
         },
       },
     },
