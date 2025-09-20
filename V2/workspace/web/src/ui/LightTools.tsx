@@ -16,13 +16,13 @@ type Preset = {
 type PercentRow  = { percent: number; value: number };
 
 // ===== Default data (existing calibration) =====
-// Updated to show G4–G8 presets. G4 retains the existing two-shelf calibration
-// and low-shift leakage. G5–G8 are single-shelf rooms using provided trendlines.
+// Updated to show G4–G8 presets. 
+// and low-shift leakage. G4–G8 are single-shelf rooms using provided trendlines.
 const DEFAULT_PRESETS: Preset[] = [
-  // G4: preserve two-shelf Fytotron defaults
+  // G4: preserve 1 shelf
   {
     name: "G4",
-    profile: "Fytotron",
+    profile: "Room",
     shelves: {
       single: {
         channels: {
