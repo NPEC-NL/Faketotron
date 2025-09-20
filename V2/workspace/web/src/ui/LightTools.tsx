@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, /* add for spectrum and dots */ BarChart, Bar, Cell } from "recharts";
 
 // ===== Types =====
 type ChannelParams = { A: number; b: number };
@@ -14,6 +14,14 @@ type Preset = {
 };
 
 type PercentRow  = { percent: number; value: number };
+
+// Simple color map per channel for consistent curves/markers
+const CHANNEL_COLORS: Record<string, string> = {
+  coolWhite: "#7aa6ff", // cool blue
+  deepRed: "#e03131",  // red
+  farRed: "#b1006b",   // magenta-ish
+};
+const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
 
 // ===== Default data (existing calibration) =====
 // Updated to show G4–G8 presets. 
@@ -113,12 +121,6 @@ export default function LightTools() {
 
   const [presetIndex, setPresetIndex] = useState(0);
   const preset = presets[presetIndex];
-  useEffect(() => {
-    // Reset per-channel percents on preset change
-    setPerChannelPercent({});
-  }, [presetIndex]);
-
-
 
   // Channels come from the first shelf of the selected preset (simplified)
   const firstShelfKey = Object.keys(preset.shelves)[0] || "";
@@ -126,6 +128,14 @@ export default function LightTools() {
 
   // per-channel percents (0..100)
   const [perChannelPercent, setPerChannelPercent] = useState<Record<ChannelName, number>>({});
+
+  // On preset change: auto-add all channels to the mix with a default 50%
+  useEffect(() => {
+    const init: Record<ChannelName, number> = {};
+    for (const ch of allChannels) init[ch] = 50;
+    setPerChannelPercent(init);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetIndex, firstShelfKey]);
 
   // Channel params from the first shelf
   function paramsFor(channel: ChannelName): ChannelParams {
@@ -135,8 +145,6 @@ export default function LightTools() {
   function onChangePreset(idx: number) {
     setPresetIndex(idx);
   }
-
-  // ===== Simplified: no spectrum/CSV, just per-channel sliders and PPFD chart =====
 
   // ===== New: PPFD vs device % chart data =====
   // Build per-channel PPFD curves using calibration PPFD(%) = A * % + b
@@ -164,6 +172,14 @@ export default function LightTools() {
     });
   }, [allChannels.join("|"), presetIndex]);
 
+  // Current selection points (one per channel) to show on the graph
+  const currentPoints = useMemo(() => {
+    return allChannels.map((ch) => {
+      const { A, b } = paramsFor(ch);
+      const pct = perChannelPercent[ch] ?? 50;
+      return { name: ch, data: [{ percent: pct, value: A * pct + b }] };
+    });
+  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
 
   // total PPFD at current slider positions
   const totalPPFD = useMemo(() => {
@@ -172,6 +188,15 @@ export default function LightTools() {
       const pct = perChannelPercent[ch] ?? 50;
       return sum + (A * pct + b);
     }, 0);
+  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
+
+  // Spectrum-like contributions (simple): per-channel PPFD bars
+  const spectrumBars = useMemo(() => {
+    return allChannels.map((ch) => {
+      const { A, b } = paramsFor(ch);
+      const pct = perChannelPercent[ch] ?? 50;
+      return { name: ch, ppfd: A * pct + b, color: colorFor(ch) };
+    });
   }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
 
   // ===== Render =====
@@ -243,17 +268,56 @@ export default function LightTools() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="value" type="number" tickFormatter={(v) => `${v}`} label={{ value: "µmol/m²/s", position: "insideBottomRight", offset: -5 }} />
                 <YAxis dataKey="percent" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <Tooltip formatter={(v: any, n: any, p: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? 'PPFD' : 'Percent']} labelFormatter={(l) => `PPFD: ${l}`} />
+                <Tooltip formatter={(v: any, n: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? 'PPFD' : 'Percent']} labelFormatter={(l) => `PPFD: ${l}`} />
                 {/* Per-channel dashed curves */}
                 {percentSeries.map((s) => (
-                  <Line key={s.name} data={s.data} dataKey="percent" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" />
+                  <Line key={s.name} data={s.data} dataKey="percent" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" stroke={colorFor(s.name)} />
                 ))}
                 {/* Total curve (solid) */}
                 <Line data={totalPercentData} dataKey="percent" name="Total" dot={false} type="monotone" strokeWidth={2} />
+                {/* Current selection markers (one dot per channel) */}
+                {currentPoints.map((s) => (
+                  <Line
+                    key={`dot-${s.name}`}
+                    data={s.data}
+                    dataKey="percent"
+                    name={`${s.name} (current)`}
+                    stroke={colorFor(s.name)}
+                    strokeOpacity={0}
+                    dot={{ r: 4, stroke: colorFor(s.name), fill: "#fff", strokeWidth: 2 }}
+                    activeDot={{ r: 5 }}
+                    type="monotone"
+                  />
+                ))}
               </LineChart>
             </ResponsiveContainer>
           </div>
         )}
+      </div>
+
+      {/* Spectrum visualization (approximate): channel contributions */}
+      <div className="border rounded-lg p-3">
+        <div className="font-medium">Spectrum (approximate, summed contributions)</div>
+        {spectrumBars.length === 0 ? (
+          <div className="text-sm text-slate-500 mt-3">No data.</div>
+        ) : (
+          <div className="h-52 w-full mt-3">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={spectrumBars} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis label={{ value: "µmol/m²/s", angle: -90, position: "insideLeft" }} />
+                <Tooltip formatter={(v: any) => [`${(v as number).toFixed(2)} µmol/m²/s`, "PPFD"]} />
+                <Bar dataKey="ppfd">
+                  {spectrumBars.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+        <div className="text-xs text-slate-500 mt-2">Note: This is not a true SPD; it shows relative PPFD per channel at current settings.</div>
       </div>
     </div>
   );
