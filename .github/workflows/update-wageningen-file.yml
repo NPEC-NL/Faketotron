@@ -31,8 +31,8 @@ jobs:
         run: pnpm install
 
       - name: Build web (single-file)
-        working-directory: V2/workspace
-        run: pnpm --filter web run build
+        working-directory: V2/workspace/web
+        run: pnpm run build
 
       - name: Copy built index.html to Wageningen_Faketron.html
         run: |
