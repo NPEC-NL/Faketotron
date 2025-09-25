@@ -1,4 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
+import * as Store from "../state/store";
+const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
 /**
  * React version of the Python script:
@@ -215,10 +217,19 @@ function analyzeSimpleFromText(
 /* ===================== UI Component ===================== */
 
 export default function CsvPhaseAnalyzer() {
-  const [secondsIndex, setSecondsIndex] = useState(0);
-  const [valueIndex, setValueIndex] = useState(1);
+  // Parsing options (fixed column indices per requirements)
+  const secondsIndex = 0;
+  const valueIndex = 1;
   const [delimiter, setDelimiter] = useState<string>(""); // empty = auto
   const [verbose, setVerbose] = useState(false);
+
+  // Target options
+  const [targetProfile, setTargetProfile] = useState<"G6" | "G8">("G6");
+  const [targetParam, setTargetParam] = useState<"Temperature" | "Cool White">("Temperature");
+
+  // App protocol state
+  const protocol = useProto((s: any) => s.protocol);
+  const setProtocol = useProto((s: any) => s.setProtocol);
 
   const [fileName, setFileName] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
@@ -226,7 +237,11 @@ export default function CsvPhaseAnalyzer() {
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const result = useMemo(() => {
+  const result = useMemo<
+    | null
+    | { phases: Phase[]; points: [string, any][]; out: any }
+    | { error: string }
+  >(() => {
     if (!rawText) return null;
     try {
       const { phases } = analyzeSimpleFromText(rawText, {
@@ -237,7 +252,7 @@ export default function CsvPhaseAnalyzer() {
       });
 
       const points: [string, any][] = [];
-      for (const ph of phases) {
+      for (const ph of phases as Phase[]) {
         const dur = Number(ph?.duration_seconds ?? 0);
         if (dur > 0) points.push([formatHHMMSS(dur), ph.value]);
       }
@@ -247,7 +262,7 @@ export default function CsvPhaseAnalyzer() {
       console.error(e);
       return { error: e?.message || String(e) };
     }
-  }, [rawText, secondsIndex, valueIndex, delimiter, verbose]);
+  }, [rawText, delimiter, verbose]);
 
   function onPickFileClick() {
     fileInputRef.current?.click();
@@ -286,6 +301,51 @@ export default function CsvPhaseAnalyzer() {
     URL.revokeObjectURL(url);
   }
 
+  function mapValueForTarget(v: any): number {
+    if (typeof v !== "number" || !Number.isFinite(v)) return 0;
+    if (targetParam === "Temperature") {
+      // internal representation expects tenths of degree, e.g. 40.1 -> 401
+      return Math.round(v * 10);
+    }
+    // Cool White: 0..100 integer percent
+    const iv = Math.round(v);
+    if (iv < 0) return 0;
+    if (iv > 100) return 100;
+    return iv;
+  }
+
+  function applyToProtocol() {
+    if (!result || "error" in result) return;
+    try {
+      const newPhases = (result as any).phases as Phase[];
+      const replaced = newPhases
+        .filter((ph: Phase) => Number(ph.duration_seconds) > 0)
+        .map((ph: Phase) => ({
+          type: "const",
+          value: mapValueForTarget(ph.value),
+          duration: formatHHMMSS(Number(ph.duration_seconds)),
+        }));
+      const next = typeof structuredClone === "function"
+        ? structuredClone(protocol)
+        : JSON.parse(JSON.stringify(protocol));
+      const parts = next?.sections?.[0]?.parts || [];
+      const groupName = targetParam; // "Temperature" or "Cool White"
+      const gi = parts.findIndex((p: any) => (p["group-name"] || p.name) === groupName);
+      if (gi < 0) {
+        alert(`Group not found in current protocol: ${groupName}`);
+        return;
+      }
+      parts[gi].phases = replaced;
+      next.sections[0].parts = parts;
+      setProtocol(next);
+      // push to legacy editor via the expected event
+      window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: next } }));
+      alert(`${groupName} phases replaced from CSV (${replaced.length} phases).`);
+    } catch (e: any) {
+      alert("Failed to apply phases: " + (e?.message || String(e)));
+    }
+  }
+
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       <h2 className="text-xl font-semibold">CSV → Phase Analyzer (browser)</h2>
@@ -297,26 +357,26 @@ export default function CsvPhaseAnalyzer() {
       {/* Controls */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
         <div>
-          <label className="block text-sm font-medium mb-1">Seconds column index</label>
-          <input
-            type="number"
-            min={0}
+          <label className="block text-sm font-medium mb-1">Target profile</label>
+          <select
             className="border rounded p-2 w-full"
-            value={secondsIndex}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setSecondsIndex(parseInt(e.target.value || "0", 10))}
-          />
+            value={targetProfile}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetProfile(e.target.value as any)}
+          >
+            <option value="G6">G6</option>
+            <option value="G8">G8</option>
+          </select>
         </div>
         <div>
-          <label className="block text-sm font-medium mb-1">Value column index</label>
-          <input
-            type="number"
-            min={0}
+          <label className="block text-sm font-medium mb-1">Target parameter</label>
+          <select
             className="border rounded p-2 w-full"
-            value={valueIndex}
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              setValueIndex(parseInt(e.target.value || "1", 10))}
-          />
+            value={targetParam}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetParam(e.target.value as any)}
+          >
+            <option value="Temperature">Temperature</option>
+            <option value="Cool White">Cool White</option>
+          </select>
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">
@@ -386,6 +446,13 @@ export default function CsvPhaseAnalyzer() {
             >
               Download JSON
             </button>
+            <button
+              onClick={applyToProtocol}
+              className="border rounded px-3 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-500"
+              title={`Replace phases for ${targetParam} in current protocol`}
+            >
+              Apply to Protocol
+            </button>
           </div>
 
           <div className="border rounded p-3">
@@ -408,7 +475,7 @@ export default function CsvPhaseAnalyzer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.phases.map((ph, i) => (
+                  {(result as any).phases.map((ph: Phase, i: number) => (
                     <tr key={i} className="border-b">
                       <td className="py-1 pr-2">{i + 1}</td>
                       <td className="py-1 pr-2">{String(ph.value)}</td>
@@ -438,7 +505,7 @@ export default function CsvPhaseAnalyzer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {result.points.map(([t, v], i) => (
+                  {(result as any).points.map(([t, v]: [string, any], i: number) => (
                     <tr key={i} className="border-b">
                       <td className="py-1 pr-2">{i + 1}</td>
                       <td className="py-1 pr-2">{t}</td>
