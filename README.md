@@ -26,7 +26,7 @@ This is **not** the standard BSD 3-Clause license — it includes a non-commerci
 See [LICENSE](LICENSE) for details.
 
 # User Guide (v2)
-Faketotron is a mock Fytotron Client's protocol editor. You can use it to customize your experiment protocol before we load it to the PSI instruments, including ME Chambers, Helios and Hades. It's a html based interface that can be opened with any browser.
+Faketotron is a mock Fytotron Client's protocol editor. You can use it to customize your experiment protocol before we load it to the PSI instruments, including Wageningen Walk in Chambers G4,G5,G6,G7,G8. It's a html based interface that can be opened with any browser.
 
 You can create any customized protocol with the interface, and download the configuration files (a machine readable .fyt file that can be loaded directly into the PSI systems, and a human-readable .json file for debugging). You can also Load .fyt file back to visualize.
 
@@ -48,7 +48,7 @@ Similarly, we can set the CO2 level (ppm) changes as such, or set up watering sc
 
 1. Download the Faketotron html file and open it with your browser.
 
-2. Select the desired Profile (i.e. Chamber type) at top right corner from the scroll-down, then click NEW under Protocol File at right panel. (Note: Hades i.e. Hotel is here only for demonstration. Always contact m.pereiramendes@uu.nl for possibilities first.)
+2. Select the desired Profile (i.e. Chamber type) at top right corner from the scroll-down, then click NEW under Protocol File at right panel.
 
 <table><colgroup><col><col><col></colgroup><thead><tr><th><p>Faketotron Profile</p></th><th><p>Applies to</p></th><th><p>Code in Fytotron Client</p></th></tr></thead><tbody><tr><td><p>Fytotron (default)</p></td><td><p>Standard Chambers (PSI 1), Helios (PSI 5)</p></td><td><p>Chamber S.</p></td></tr><tr><td><p>Helios Growth</p></td><td><p>Helios Growth room (PSI 5)</p></td><td><p>HeliosFyto</p></td></tr><tr><td><p>Extended Temperature</p></td><td><p>Extended Temperature Chambers (PSI 2)</p></td><td><p>Chamber T.</p></td></tr><tr><td><p>Daylight</p></td><td><p>Daylight Simulation Chambers (PSI 3)</p></td><td><p>Chamber D.</p></td></tr><tr><td><p>Hotel</p></td><td><p>Hades Growth rooms (PSI 4)</p></td><td><p>HadesFyto</p></td></tr></tbody></table>
 
@@ -78,17 +78,43 @@ Auto range check and wrapping will be done when performing cross-group pasting: 
 
 
 ## Light Tools
+The **Light Tools** tab lets you explore light calibration presets for **G4–G8 chambers**.
+Each preset contains measured linear fits *(PPFD = A × % + b)* for **Cool White, Deep Red, and Far Red**.
 
-You can switch to Light Tools tab to calculate the **machine setpoint (%) to standard unit (μE/m²/s/nm)**.
+* **Inputs**: select a chamber preset and set channel intensities (0–100%).
+* **Outputs**:
 
-For chambers that has 2 shelves, we calculate the leakge from high to low base on the high shelf settings. ![Leakage](3.gif)
+  * Estimated PPFD per channel + total PPFD.
+  * Line chart: PPFD vs % curves with current settings marked.
+  * Spectrum-style bars: relative contributions of each channel.
 
-You can add the measurement files from `/Light Calibrations` to visualize the light curves by each channel. ![Visualization per channel](4.gif).
+**Notes**
 
+* Values are approximate, based on linear regressions.
+* Spectrum chart is not a true SPD, only relative PPFD.
+* Presets (G4–G8) are saved locally in the browser.
+
+## CSV Tab
+The **CSV Tab** lets you import simple CSV files and convert them into protocol phases for any Wageningen walk-in chamber (**G4, G5, G6, G7, G8**).
+* **Input format**: rows like `[seconds, value]` (no headers).
+* **Processing**:
+  * Groups consecutive identical values.
+  * Sums durations in seconds.
+  * Rounds numeric values to 1 decimal.
+  * Auto-detects delimiter (`, ; \t |`).
+  * Skips invalid or incomplete rows.
+* **Output**:
+  * Human-readable tables of phase runs and points.
+  * Machine-readable JSON (`.json`) that can be copied, downloaded, or applied directly to the current protocol.
+**Workflow**
+1. Select **Target Profile** (G4–G8) and **Target Parameter** (e.g. *Temperature* or *Cool White*).
+2. Upload CSV with **“Choose CSV…”**.
+3. Inspect results in table and JSON views.
+4. Export or apply directly into the protocol.
 
 ## Important Notes:
-- **Variable 2 refer to the Higher shelf.** For example, CoolWhite2 or DeepRed2 is for the settings on the higher shelf, while CoolWhite is for the lower shelf.
 - **Time format:** HH:MM:SS for no more than 24 hours. **D.HH:MM:SS for over 24 hours.** For example, 01:30:00 for 1.5 hrs, and 1.06:00:00 for 30 hours (**note: use 1.00:00:00 for 24 hrs**)
+- For the CSV tools it is in seconds
 - Sine phase: It is defined in a not really mathematical way.
   - Don't confuse **Duration** & **Period**. Assume that your Period=10min and Duration=1hour, the value will oscillate for 6 times.
   - Offset is how much you move the curve to the left.![Visualization of a Sine phase (screenshot from Fytotron Client)](content_004.webp)
@@ -113,13 +139,5 @@ You can add the measurement files from `/Light Calibrations` to visualize the li
 - Although PSI is actually storing times in second level precision (hh:mm:ss), you cannot edit it in their own Fytotron Client™ application. You can do it at Faketotron and the machines can still execute the protocols at second level, but if you need to edit it on the machines, the seconds will be dropped.
 - Since PSI didn't reveal the formula for Cloud phases, there's no visualization. If you are considering using cloud phase, please contact v.meline@uu.nl for more details.
 ![Visualization of a Cloud phase (screenshot from Fytotron Client)](content.webp)
-
-# Development
-
-For wrapping customized V1 into V2 and editing Light Tool preset, see `\V2\README.md`
-
-For adding or modifying the profiles at legacy editor (V1), you can edit and open directly the `V2\workspace\web\src\legacy\latest\index.html`, and modify the profile default json at `const PROFILE_JSONS` and their corresponding ranges at `const RANGES`. 
-
-The .json (variable groups and names) can be obtained by the real Fytotron Client by saving the protocol (.fyt file) to local computer, then open it using vscode or other hex decoder. For the range limit, you need to test it yourself on the real machine.
 
 **Be very careful to also edit `const MACHINE_VAR`**: It's the actual machine variable name that you should obtain from the "real" .fyt file. We perform some frontend name mapping to match the display name in the real Fytotron (the real Fytotron Client has different display names than their machine variable names).
