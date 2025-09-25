@@ -819,7 +819,7 @@ function renderPhases(){
     const cSum=document.createElement('div');
     cSum.className='clickable';
     cSum.onclick = () => { insertAfterIndex = i; openEditPhase(p); };
-    cSum.appendChild(buildSummary(g.type, p));
+  cSum.appendChild(buildSummary(g.name, p));
 
     // (6) actions
     const cAct=document.createElement('div'); cAct.className='ph-actions';
@@ -891,26 +891,46 @@ $('#btnCloseGroups').onclick=()=>{groups=groups.filter(g=>g.vars&&g.vars.length>
 /* ============================================================
    PHASES: ADD / EDIT / REMOVE
    ============================================================ */
-function openAddPhase(){const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const typeName=g.type;const sel=$('#phType');Array.from(sel.options).forEach(o=>{o.disabled=(typeName==='Hydroponics' && o.value!=='const');});sel.value=(typeName==='Hydroponics')?'const':'const';buildPhaseFields(typeName, sel.value);sel.onchange=()=> buildPhaseFields(typeName, sel.value);$('#dlgPhase').dataset.mode='add';$('#dlgPhase').style.display='flex';}
-function openEditPhase(ph){const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const typeName=g.type;const sel=$('#phType');Array.from(sel.options).forEach(o=>{o.disabled=(typeName==='Hydroponics' && o.value!=='const');});sel.value=ph.type;buildPhaseFields(typeName, sel.value);if(ph.type==='const'){ $('#phVal').value=fmtForEdit(typeName, ph.value); }if(ph.type==='ramp'){ $('#phStart').value=fmtForEdit(typeName, ph.start); $('#phEnd').value=fmtForEdit(typeName, ph.end); 
+function openAddPhase(){const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const groupName=g.name;const sel=$('#phType');Array.from(sel.options).forEach(o=>{o.disabled=(groupName==='Hydroponics' && o.value!=='const');});sel.value=(groupName==='Hydroponics')?'const':'const';buildPhaseFields(groupName, sel.value);sel.onchange=()=> buildPhaseFields(groupName, sel.value);$('#dlgPhase').dataset.mode='add';$('#dlgPhase').style.display='flex';}
+function openEditPhase(ph){const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const groupName=g.name;const sel=$('#phType');Array.from(sel.options).forEach(o=>{o.disabled=(groupName==='Hydroponics' && o.value!=='const');});sel.value=ph.type;buildPhaseFields(groupName, sel.value);if(ph.type==='const'){ $('#phVal').value=fmtForEdit(groupName, ph.value); }if(ph.type==='ramp'){ $('#phStart').value=fmtForEdit(groupName, ph.start); $('#phEnd').value=fmtForEdit(groupName, ph.end); 
     const stepVal = (ph.step || RAMP_STEP);
     const stepEl = $('#phStep'); if(stepEl){ stepEl.value = stepVal; }
     }
     if(ph.type==='cloud'){ const stepEl=$('#phStep'); if(stepEl){ stepEl.value = (ph.step || RAMP_STEP);} const dropEl=$('#phDrop'); if(dropEl){ /* keep user/set value */ } }
     if(ph.type==='sin'){ const stepEl=$('#phStep'); if(stepEl){ stepEl.value = (ph.step || RAMP_STEP);} }
-    if(ph.type==='sin'){ $('#phMin').value=fmtForEdit(typeName, ph.min); $('#phMax').value=fmtForEdit(typeName, ph.max); $('#phPeriod').value=ph.period; $('#phOffset').value=ph.phaseOffset; }if(ph.type==='cloud'){ $('#phAmp').value=fmtForEdit(typeName, ph.amplitude); $('#phOff').value=fmtForEdit(typeName, ph.offset); $('#phDen').value=ph.cloud_density; $('#phPos').value=ph.cloud_position; $('#phCMean').value=ph.cloud_duration_mean; $('#phCVar').value=ph.cloud_duration_var; $('#phFR').value=ph.fluctuation_mean_ratio; $('#phFV').value=ph.fluctuation_var; $('#phDrop').value = (Number(ph.cloud_drop_coeff).toFixed(2)); }$('#phDur').value=ph.duration;$('#dlgPhase').dataset.mode='edit'; $('#dlgPhase').dataset.editIndex=insertAfterIndex;$('#dlgPhase').style.display='flex';}
+  if(ph.type==='sin'){ $('#phMin').value=fmtForEdit(groupName, ph.min); $('#phMax').value=fmtForEdit(groupName, ph.max); $('#phPeriod').value=ph.period; $('#phOffset').value=ph.phaseOffset; }if(ph.type==='cloud'){ $('#phAmp').value=fmtForEdit(groupName, ph.amplitude); $('#phOff').value=fmtForEdit(groupName, ph.offset); $('#phDen').value=ph.cloud_density; $('#phPos').value=ph.cloud_position; $('#phCMean').value=ph.cloud_duration_mean; $('#phCVar').value=ph.cloud_duration_var; $('#phFR').value=ph.fluctuation_mean_ratio; $('#phFV').value=ph.fluctuation_var; $('#phDrop').value = (Number(ph.cloud_drop_coeff).toFixed(2)); }$('#phDur').value=ph.duration;$('#dlgPhase').dataset.mode='edit'; $('#dlgPhase').dataset.editIndex=insertAfterIndex;$('#dlgPhase').style.display='flex';}
 function fmtForEdit(varType,val){ if(varType==='Temperature'){ return (Number(val)/10).toFixed(1); } return String(val);}
 
 
+// Resolve RANGES key given group name or type
+function resolveRangeKey(varType){
+  if(RANGES[varType]) return varType;
+  const map={
+    'cool-white':'Cool White','white':'Cool White',
+    'deep-red':'DeepRed','far-red':'FarRed',
+    'co2':'CO2','humidity':'Humidity','temperature':'Temperature',
+    'uvb':'UVB','uva':'UVA','red':'Red','green':'Green','blue':'Blue','amber':'Amber','cyan':'Cyan'
+  };
+  const k = map[String(varType||'').toLowerCase()];
+  return k || varType;
+}
 function buildPhaseFields(varType,phType){
   const wrap=$('#phFields');wrap.innerHTML='';
-  const range=RANGES[varType];
+  const rk=resolveRangeKey(varType);
+  const range=RANGES[rk]||{min:0,max:100,int:true};
   // Local override: for Humidity + Cloud, amplitude/offset must be 0–100
   const effRange = (phType==='cloud' && varType==='Humidity') ? {min:0,max:100,int:true} : range;
 
   const hint=(text)=>\`<div style="grid-column:1/-1;color:#566;font-size:12px;margin-top:2px">\${text}</div>\`;
   const f=(label,id,value,placeholder='')=>\`<label for="\${id}">\${label}:</label><input id="\${id}" class="input" value="\${value}" placeholder="\${placeholder}">\`;
-  const d=DEF[phType][varType];
+  const baseDur='01:00:00';
+  const midVal=Math.round((range.min+range.max)/2);
+  const d=(DEF[phType]&&DEF[phType][varType])?DEF[phType][varType]:
+          (phType==='const'?{value:midVal,duration:baseDur}:
+           phType==='ramp'?{start:range.min,end:range.max,duration:baseDur}:
+           phType==='sin'?{min:range.min,max:range.max,period:baseDur,phaseOffset:'00:00:00',duration:baseDur}:
+           phType==='cloud'?{amplitude:midVal,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:0.15,fluctuation_var:10,cloud_drop_coeff:0.5,duration:baseDur}:
+           {value:midVal,duration:baseDur});
   if(phType==='const'){
     wrap.innerHTML=\`<div class="grid2">\${f('Value', 'phVal', d.value)}\${f('Duration', 'phDur', d.duration, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}</div>\` + hint(\`Range \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
   }else if(phType==='ramp'){
@@ -929,7 +949,7 @@ function buildPhaseFields(varType,phType){
 
 
 function readPhaseFromForm(varType){
-  const t=$('#phType').value;const rng=RANGES[varType];
+  const t=$('#phType').value;const rk=(typeof resolveRangeKey==='function'? resolveRangeKey(varType) : varType); const rng=RANGES[rk]||{min:0,max:100,int:true};
   const tempDecimalAllowed=(varType==='Temperature');
   const asNumber=(raw)=>{const n=Number(raw);return Number.isFinite(n)?n:NaN;};
   const clampCheck=(raw,min,max,{requireInt=true}={})=>{
@@ -993,7 +1013,8 @@ let PASTE_VALIDATION_MODE = 'clamp';
 function clamp(n, lo, hi){ return Math.min(hi, Math.max(lo, n)); }
 
 function validatePhaseForTarget(varType, phase, mode='clamp'){
-  const rng = RANGES[varType];
+  const rk = (typeof resolveRangeKey==='function'? resolveRangeKey(varType) : varType);
+  const rng = RANGES[rk] || { min: 0, max: 100, int: true };
   if(!rng) return { ok:true, fixed: phase, issues: [] };
 
   // humidity cloud exception (same as buildPhaseFields UI hint)
@@ -1234,7 +1255,7 @@ $('#btnMoveSelDown').onclick = ()=>{
 
 $('#btnAddPhase').onclick=()=>{insertAfterIndex=null;openAddPhase();};
 $('#phCancel').onclick=()=> $('#dlgPhase').style.display='none';
-$('#phOK').onclick=()=>{const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const varType=g.type;const ph=readPhaseFromForm(varType); if(!ph) return; if($('#dlgPhase').dataset.mode==='edit'){ const idx=parseInt($('#dlgPhase').dataset.editIndex,10); g.phases.splice(idx,1,ph); } else { if(insertAfterIndex==null){g.phases.push(ph);}else{g.phases.splice(insertAfterIndex+1,0,ph);} } $('#dlgPhase').style.display='none'; renderPhases(); updateGroupDurationField(); updateOverallDuration(); };
+$('#phOK').onclick=()=>{const g=groups.find(x=>x.id===activeGroupId);if(!g)return;const varType=g.name;const ph=readPhaseFromForm(varType); if(!ph) return; if($('#dlgPhase').dataset.mode==='edit'){ const idx=parseInt($('#dlgPhase').dataset.editIndex,10); g.phases.splice(idx,1,ph); } else { if(insertAfterIndex==null){g.phases.push(ph);}else{g.phases.splice(insertAfterIndex+1,0,ph);} } $('#dlgPhase').style.display='none'; renderPhases(); updateGroupDurationField(); updateOverallDuration(); };
 
 /* ============================================================
    EXPORT: JSON & FYT
