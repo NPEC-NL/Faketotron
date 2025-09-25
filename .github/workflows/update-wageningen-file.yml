@@ -1,57 +1,62 @@
-# name: Build and update Wageningen single-file app
+name: Build and update Wageningen single-file app
 
-# on:
-#   workflow_dispatch: {}
-#   push:
-#     branches:
-#       - Wageningen
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - Wageningen-with-CSV
 
-# permissions:
-#   contents: write
+permissions:
+  contents: write
 
-# jobs:
-#   build-and-commit:
-#     runs-on: ubuntu-latest
-#     steps:
-#       - name: Checkout repository
-#         uses: actions/checkout@v4
+jobs:
+  build-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-#       - name: Setup Node.js
-#         uses: actions/setup-node@v4
-#         with:
-#           node-version: '20'
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
-#       - name: Setup pnpm
-#         uses: pnpm/action-setup@v4
-#         with:
-#           version: 8
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 8
 
-#       - name: Install dependencies (workspace)
-#         working-directory: V2/workspace
-#         run: pnpm install
+      - name: Install dependencies (workspace)
+        working-directory: V2/workspace
+        run: pnpm install
 
-#       - name: Build web (single-file)
-#         working-directory: V2/workspace/web
-#         run: pnpm run build
+      - name: Build core package
+        working-directory: V2/workspace/faketotron-v2-core
+        run: pnpm run build
 
-#       - name: Copy built index.html to Wageningen_Faketron.html
-#         run: |
-#           cp V2/workspace/web/dist/index.html Wageningen_Faketron.html
+      - name: Build web (single-file)
+        working-directory: V2/workspace/web
+        run: pnpm run build
 
-#       - name: Commit and push updated Wageningen_Faketron.html
-#         run: |
-#           git config user.name "github-actions[bot]"
-#           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-#           if ! git diff --quiet Wageningen_Faketron.html; then
-#             git add Wageningen_Faketron.html
-#             git commit -m "CI: Update Wageningen_Faketron.html from latest build"
-#             git push
-#           else
-#             echo "No changes to Wageningen_Faketron.html"
-#           fi
+      - name: Copy built index.html to Wageningen_Faketron.html
+        run: |
+          cp V2/workspace/web/dist/index.html Wageningen_Faketron.html
 
-#       - name: Upload dist as artifact (optional)
-#         uses: actions/upload-artifact@v4
-#         with:
-#           name: faketotron-dist
-#           path: V2/workspace/web/dist/
+      - name: Commit and push updated Wageningen_Faketron.html
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet Wageningen_Faketron.html; then
+            git add Wageningen_Faketron.html
+            git commit -m "CI: Update Wageningen_Faketron.html from latest build"
+            git push
+          else
+            echo "No changes to Wageningen_Faketron.html"
+          fi
+
+      - name: Upload dist as artifact (optional)
+        uses: actions/upload-artifact@v4
+        with:
+          name: faketotron-dist
+          path: V2/workspace/web/dist/
+
