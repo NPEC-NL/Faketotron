@@ -223,10 +223,7 @@ export default function CsvPhaseAnalyzer() {
   const [delimiter, setDelimiter] = useState<string>(""); // empty = auto
   const [verbose, setVerbose] = useState(false);
 
-  // Target options
-  type TargetProfile = "G4" | "G5" | "G6" | "G7" | "G8";
-  const currentProfile: TargetProfile = useProto((s: any) => s.profile) as TargetProfile;
-  const [targetProfile, setTargetProfile] = useState<TargetProfile>(currentProfile);
+  // Target options (only parameter; applies to the currently open room/protocol)
   const [targetParam, setTargetParam] = useState<"Temperature" | "Cool White">("Temperature");
 
   // App protocol state
@@ -316,8 +313,7 @@ export default function CsvPhaseAnalyzer() {
     return iv;
   }
 
-  // Note: targetProfile is a UI hint. Apply will modify the currently loaded protocol
-  // (which should be created for the selected room in the Editor). The group names
+  // Apply will modify the currently loaded protocol in the editor. The group names
   // (Temperature, Cool White) are consistent across G4–G8.
   function applyToProtocol() {
     if (!result || "error" in result) return;
@@ -360,21 +356,7 @@ export default function CsvPhaseAnalyzer() {
       </p>
 
       {/* Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-        <div>
-          <label className="block text-sm font-medium mb-1">Target profile</label>
-          <select
-            className="border rounded p-2 w-full"
-            value={targetProfile}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetProfile(e.target.value as any)}
-          >
-            <option value="G4">G4</option>
-            <option value="G5">G5</option>
-            <option value="G6">G6</option>
-            <option value="G7">G7</option>
-            <option value="G8">G8</option>
-          </select>
-        </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
         <div>
           <label className="block text-sm font-medium mb-1">Target parameter</label>
           <select
@@ -399,7 +381,7 @@ export default function CsvPhaseAnalyzer() {
             maxLength={1}
           />
         </div>
-        <div className="md:col-span-3 flex items-center gap-4">
+        <div className="md:col-span-2 flex items-center gap-4">
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
