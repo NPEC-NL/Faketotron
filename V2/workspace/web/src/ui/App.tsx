@@ -3,11 +3,12 @@ import FilesToolbar from "./FilesTab";
 import EditorTab from "./EditorTab";
 import GraphTab from "./GraphTab";
 import LightTools from "./LightTools";
+import CsvTab from "./CsvTab";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "editor" | "graph" | "light";
+type TabKey = "editor" | "graph" | "light" | "csv";
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>("editor");
@@ -50,6 +51,7 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
+        {TabBtn("csv", "CSV")}
       </div>
 
       <div
@@ -70,6 +72,10 @@ export default function App() {
 
       <div ref={lightRef} style={{ display: tab === "light" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <LightTools />
+      </div>
+
+      <div style={{ display: tab === "csv" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
+        <CsvTab />
       </div>
     </div>
   );
