@@ -6,9 +6,13 @@ export const RANGES: Record<string, Range> = {
   "Cool White": { min: 0, max: 100, int: true },
   "Deep-Red": { min: 0, max: 100, int: true },
   "Far-Red": { min: 0, max: 100, int: true },
+  // New naming used by G4/G5/G8 profiles
+  DeepRed: { min: 0, max: 100, int: true },
+  FarRed: { min: 0, max: 100, int: true },
   Humidity: { min: 35, max: 90, int: true },
   Hydroponics: { min: 0, max: 1, int: true },
   Temperature: { min: 0, max: 500, int: true, scale: 10 },
+  UVB: { min: 0, max: 100, int: true },
 
   // Daylight / Helios channels default to 0..100%
   Blue: { min: 0, max: 100, int: true },

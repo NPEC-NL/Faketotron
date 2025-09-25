@@ -24,7 +24,7 @@ export type Group = {
 export type Section  = { parts: Group[] };
 export type Protocol = { description: string; repeat: number; logic: string; sections: Section[] };
 
-export type ProfileKey = "fytotron-standard" | "fytotron-extended" | "daylight" | "helios";
+export type ProfileKey = "G4" | "G5" | "G6" | "G7" | "G8";
 export type Profile    = { key: ProfileKey; title: string; groups: Group[] };
 
 function defConst(name: string, dur = "01:00:00"): PhaseConst {
@@ -35,68 +35,74 @@ function defConst(name: string, dur = "01:00:00"): PhaseConst {
 
 /** Four chamber profiles. Machine var lists mirror V1 naming; adjust if needed. */
 export const PROFILES: Record<ProfileKey, Profile> = {
-  "fytotron-standard": {
-    key: "fytotron-standard",
-    title: "Fytotron (2-shelf, Standard Temp)",
+  G4: {
+    key: "G4",
+    title: "G4 (Standard)",
     groups: [
-      { name: "CO2",          type: "co2",        unit: "ppm",     vars: ["CO2_Set"],           phases: [defConst("CO2")] },
-      { name: "Cool White",   type: "white",      unit: "percent", vars: ["CoolWhite1"],        phases: [defConst("Cool White")] },
-      { name: "Cool White 2", type: "white",      unit: "percent", vars: ["CoolWhite2"],        phases: [defConst("Cool White")] },
-      { name: "Deep-Red",     type: "deep-red",   unit: "percent", vars: ["DeepRed1"],          phases: [defConst("Deep-Red")] },
-      { name: "Deep-Red 2",   type: "deep-red",   unit: "percent", vars: ["DeepRed2"],          phases: [defConst("Deep-Red")] },
-      { name: "Far-Red",      type: "far-red",    unit: "percent", vars: ["FarRed1"],           phases: [defConst("Far-Red")] },
-      { name: "Far-Red 2",    type: "far-red",    unit: "percent", vars: ["FarRed2"],           phases: [defConst("Far-Red")] },
-      { name: "Humidity",     type: "humidity",   unit: "percent", vars: ["Rh_Set"],            phases: [defConst("Humidity")] },
-      { name: "Hydroponics",  type: "hydroponie", unit: "",        vars: ["Run1","Run2"],       phases: [defConst("Hydroponics")] },
-      { name: "Temperature",  type: "temperature",unit: "celsius", vars: ["T_Set"],             phases: [defConst("Temperature")] },
+      { name: "CO2",          type: "co2",         unit: "ppm",     vars: ["CO2_Set"],   phases: [defConst("CO2")] },
+      { name: "Cool White",   type: "cool-white",  unit: "percent", vars: ["CoolWhite"], phases: [defConst("Cool White")] },
+      { name: "DeepRed",      type: "deep-red",    unit: "percent", vars: ["DeepRed"],   phases: [defConst("DeepRed")] },
+      { name: "FarRed",       type: "far-red",     unit: "percent", vars: ["FarRed"],    phases: [defConst("FarRed")] },
+      { name: "Humidity",     type: "humidity",    unit: "percent", vars: ["Rh_Set"],    phases: [defConst("Humidity")] },
+      { name: "Temperature",  type: "temperature", unit: "celsius", vars: ["T_Set"],     phases: [defConst("Temperature")] },
+      { name: "UVB",          type: "uvb",         unit: "percent", vars: ["UVB"],       phases: [defConst("UVB")] },
     ],
   },
-  "fytotron-extended": {
-    key: "fytotron-extended",
-    title: "Fytotron (2-shelf, Extended Temp)",
+  G5: {
+    key: "G5",
+    title: "G5",
     groups: [
-      { name: "CO2",          type: "co2",        unit: "ppm",     vars: ["CO2_Set"],           phases: [defConst("CO2")] },
-      { name: "Cool White",   type: "white",      unit: "percent", vars: ["CoolWhite1"],        phases: [defConst("Cool White")] },
-      { name: "Cool White 2", type: "white",      unit: "percent", vars: ["CoolWhite2"],        phases: [defConst("Cool White")] },
-      { name: "Deep-Red",     type: "deep-red",   unit: "percent", vars: ["DeepRed1"],          phases: [defConst("Deep-Red")] },
-      { name: "Deep-Red 2",   type: "deep-red",   unit: "percent", vars: ["DeepRed2"],          phases: [defConst("Deep-Red")] },
-      { name: "Far-Red",      type: "far-red",    unit: "percent", vars: ["FarRed1"],           phases: [defConst("Far-Red")] },
-      { name: "Far-Red 2",    type: "far-red",    unit: "percent", vars: ["FarRed2"],           phases: [defConst("Far-Red")] },
-      { name: "Humidity",     type: "humidity",   unit: "percent", vars: ["Rh_Set"],            phases: [defConst("Humidity")] },
-      { name: "Hydroponics",  type: "hydroponie", unit: "",        vars: ["Run1","Run2"],       phases: [defConst("Hydroponics")] },
-      { name: "Temperature",  type: "temperature",unit: "celsius", vars: ["T_Set"],             phases: [defConst("Temperature")] },
+      { name: "CO2",          type: "co2",         unit: "ppm",     vars: ["CO2_Set"],   phases: [defConst("CO2")] },
+      { name: "Cool White",   type: "cool-white",  unit: "percent", vars: ["CoolWhite"], phases: [defConst("Cool White")] },
+      { name: "DeepRed",      type: "deep-red",    unit: "percent", vars: ["DeepRed"],   phases: [defConst("DeepRed")] },
+      { name: "FarRed",       type: "far-red",     unit: "percent", vars: ["FarRed"],    phases: [defConst("FarRed")] },
+      { name: "Humidity",     type: "humidity",    unit: "percent", vars: ["Rh_Set"],    phases: [defConst("Humidity")] },
+      { name: "Temperature",  type: "temperature", unit: "celsius", vars: ["T_Set"],     phases: [defConst("Temperature")] },
+      { name: "UVB",          type: "uvb",         unit: "percent", vars: ["UVB"],       phases: [defConst("UVB")] },
     ],
   },
-  daylight: {
-    key: "daylight",
-    title: "Daylight Chamber",
+  G6: {
+    key: "G6",
+    title: "G6",
     groups: [
-      { name: "Blue",     type: "blue",     unit: "percent", vars: ["Blue1","Blue2","Blue3","Blue4"],       phases: [defConst("Blue")] },
-      { name: "Green",    type: "green",    unit: "percent", vars: ["Green1","Green2","Green3","Green4"],   phases: [defConst("Green")] },
-      { name: "Red",      type: "red",      unit: "percent", vars: ["Red1","Red2","Red3","Red4"],           phases: [defConst("Red")] },
-      { name: "Far-Red",  type: "far-red",  unit: "percent", vars: ["FarRed1","FarRed2","FarRed3","FarRed4"], phases: [defConst("Far-Red")] },
-      { name: "Amber",    type: "amber",    unit: "percent", vars: ["Amber1","Amber2","Amber3","Amber4"],   phases: [defConst("Amber")] },
-      { name: "Cyan",     type: "cyan",     unit: "percent", vars: ["Cyan1","Cyan2","Cyan3","Cyan4"],       phases: [defConst("Cyan")] },
-      { name: "UVA",      type: "uva",      unit: "percent", vars: ["UVA1","UVA2","UVA3","UVA4"],           phases: [defConst("UVA")] },
-      { name: "CO2",      type: "co2",      unit: "ppm",     vars: ["CO2_Set"],                               phases: [defConst("CO2")] },
-      { name: "Humidity", type: "humidity", unit: "percent", vars: ["Rh_Set"],                                phases: [defConst("Humidity")] },
-      { name: "Temperature", type: "temperature", unit: "celsius", vars: ["T_Set"],                           phases: [defConst("Temperature")] },
+      { name: "CO2",          type: "co2",         unit: "ppm",     vars: ["CO2_Set"],   phases: [defConst("CO2")] },
+      { name: "Cool White",   type: "white",       unit: "percent", vars: ["CoolWhite1","CoolWhite2","CoolWhite3","CoolWhite4","CoolWhite5","CoolWhite6"], phases: [defConst("Cool White")] },
+      { name: "FarRed",       type: "far-red",     unit: "percent", vars: ["FarRed1","FarRed2","FarRed3","FarRed4","FarRed5","FarRed6"], phases: [defConst("FarRed")] },
+      { name: "Humidity",     type: "humidity",    unit: "percent", vars: ["Rh_Set"],    phases: [defConst("Humidity")] },
+      { name: "Red",          type: "red",         unit: "percent", vars: ["Red1","Red2","Red3","Red4","Red5","Red6"], phases: [defConst("Red")] },
+      { name: "Temperature",  type: "temperature", unit: "celsius", vars: ["T_Set"],     phases: [defConst("Temperature")] },
+      { name: "UVB",          type: "uvb",         unit: "percent", vars: ["UVB"],       phases: [defConst("UVB")] },
     ],
   },
-  helios: {
-    key: "helios",
-    title: "Helios",
+  G7: {
+    key: "G7",
+    title: "G7",
     groups: [
-      { name: "Blue",     type: "blue",     unit: "percent", vars: ["Blue1","Blue2","Blue3","Blue4"],       phases: [defConst("Blue")] },
-      { name: "Green",    type: "green",    unit: "percent", vars: ["Green1","Green2","Green3","Green4"],   phases: [defConst("Green")] },
-      { name: "Red",      type: "red",      unit: "percent", vars: ["Red1","Red2","Red3","Red4"],           phases: [defConst("Red")] },
-      { name: "Far-Red",  type: "far-red",  unit: "percent", vars: ["FarRed1","FarRed2","FarRed3","FarRed4"], phases: [defConst("Far-Red")] },
-      { name: "Amber",    type: "amber",    unit: "percent", vars: ["Amber1","Amber2","Amber3","Amber4"],   phases: [defConst("Amber")] },
-      { name: "Cyan",     type: "cyan",     unit: "percent", vars: ["Cyan1","Cyan2","Cyan3","Cyan4"],       phases: [defConst("Cyan")] },
-      { name: "UVA",      type: "uva",      unit: "percent", vars: ["UVA1","UVA2","UVA3","UVA4"],           phases: [defConst("UVA")] },
-      { name: "CO2",      type: "co2",      unit: "ppm",     vars: ["CO2_Set"],                               phases: [defConst("CO2")] },
-      { name: "Humidity", type: "humidity", unit: "percent", vars: ["Rh_Set"],                                phases: [defConst("Humidity")] },
-      { name: "Temperature", type: "temperature", unit: "celsius", vars: ["T_Set"],                           phases: [defConst("Temperature")] },
+      { name: "Amber",        type: "amber",       unit: "percent", vars: ["Amber"],     phases: [defConst("Amber")] },
+      { name: "Blue",         type: "blue",        unit: "percent", vars: ["Blue"],      phases: [defConst("Blue")] },
+      { name: "CO2",          type: "co2",         unit: "ppm",     vars: ["CO2_Set"],   phases: [defConst("CO2")] },
+      { name: "Cool White",   type: "cool-white",  unit: "percent", vars: ["CoolWhite"], phases: [defConst("Cool White")] },
+      { name: "Cyan",         type: "cyan",        unit: "percent", vars: ["Cyan"],      phases: [defConst("Cyan")] },
+      { name: "DeepRed",      type: "deep-red",    unit: "percent", vars: ["DeepRed"],   phases: [defConst("DeepRed")] },
+      { name: "FarRed",       type: "far-red",     unit: "percent", vars: ["FarRed"],    phases: [defConst("FarRed")] },
+      { name: "Green",        type: "green",       unit: "percent", vars: ["Green"],     phases: [defConst("Green")] },
+      { name: "Humidity",     type: "humidity",    unit: "percent", vars: ["Rh_Set"],    phases: [defConst("Humidity")] },
+      { name: "Red",          type: "red",         unit: "percent", vars: ["Red"],       phases: [defConst("Red")] },
+      { name: "Temperature",  type: "temperature", unit: "celsius", vars: ["T_Set"],     phases: [defConst("Temperature")] },
+      { name: "UVA",          type: "uva",         unit: "percent", vars: ["UVA"],       phases: [defConst("UVA")] },
+    ],
+  },
+  G8: {
+    key: "G8",
+    title: "G8",
+    groups: [
+      { name: "CO2",          type: "co2",         unit: "ppm",     vars: ["CO2_Set"],   phases: [defConst("CO2")] },
+      { name: "Cool White",   type: "cool-white",  unit: "percent", vars: ["CoolWhite"], phases: [defConst("Cool White")] },
+      { name: "DeepRed",      type: "deep-red",    unit: "percent", vars: ["DeepRed"],   phases: [defConst("DeepRed")] },
+      { name: "FarRed",       type: "far-red",     unit: "percent", vars: ["FarRed"],    phases: [defConst("FarRed")] },
+      { name: "Humidity",     type: "humidity",    unit: "percent", vars: ["Rh_Set"],    phases: [defConst("Humidity")] },
+      { name: "Temperature",  type: "temperature", unit: "celsius", vars: ["T_Set"],     phases: [defConst("Temperature")] },
+      { name: "UVB",          type: "uvb",         unit: "percent", vars: ["UVB"],       phases: [defConst("UVB")] },
     ],
   },
 };

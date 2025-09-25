@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { Protocol, Phase } from "../profiles";
 
 type State = {
-  profile: "fytotron-standard" | "fytotron-extended" | "daylight" | "helios";
+  profile: "G4" | "G5" | "G6" | "G7" | "G8";
   protocol: Protocol;
   /** Bumped on ANY protocol change to force subscribers to recompute */
   protoRev: number;
@@ -16,17 +16,17 @@ type Actions = {
   removePhase: (groupIdx: number, phaseIdx: number) => void;
 };
 
-export const useStore = create<State & Actions>((set) => ({
-  profile: "fytotron-standard",
+export const useStore = create<State & Actions>((set: any) => ({
+  profile: "G4",
   protocol: { description: "", repeat: 2147483647, logic: "", sections: [{ parts: [] }] },
   protoRev: 0,
 
-  setProfile: (p) => set({ profile: p }),
+  setProfile: (p: State["profile"]) => set({ profile: p }),
 
   // Replace protocol (from legacy editor load/edit, file import, etc.)
   // Ensure new identity and bump protoRev so subscribers (GraphTab) refresh.
-  setProtocol: (p) =>
-  set((s) => {
+  setProtocol: (p: Protocol) =>
+  set((s: any) => {
     const protocol = typeof structuredClone === "function"
       ? structuredClone(p)
       : JSON.parse(JSON.stringify(p));
@@ -41,8 +41,8 @@ export const useStore = create<State & Actions>((set) => ({
     return { protocol, protoRev };
   }),
 
-  addPhase: (gi, ph) =>
-    set((s) => {
+  addPhase: (gi: number, ph: Phase) =>
+    set((s: any) => {
       const parts = [...(s.protocol.sections[0]?.parts || [])];
       const g = { ...parts[gi] };
       g.phases = [...(g.phases || []), ph];
@@ -50,21 +50,21 @@ export const useStore = create<State & Actions>((set) => ({
       return { protocol: { ...s.protocol, sections: [{ parts }] }, protoRev: s.protoRev + 1 };
     }),
 
-  updatePhase: (gi, pi, patch) =>
-    set((s) => {
+  updatePhase: (gi: number, pi: number, patch: Partial<Phase>) =>
+    set((s: any) => {
       const parts = [...(s.protocol.sections[0]?.parts || [])];
       const g = { ...parts[gi] };
       const ph = { ...g.phases[pi], ...patch } as Phase;
-      g.phases = g.phases.map((x, i) => (i === pi ? ph : x));
+  g.phases = g.phases.map((x: Phase, i: number) => (i === pi ? ph : x));
       parts[gi] = g;
       return { protocol: { ...s.protocol, sections: [{ parts }] }, protoRev: s.protoRev + 1 };
     }),
 
-  removePhase: (gi, pi) =>
-    set((s) => {
+  removePhase: (gi: number, pi: number) =>
+    set((s: any) => {
       const parts = [...(s.protocol.sections[0]?.parts || [])];
       const g = { ...parts[gi] };
-      g.phases = g.phases.filter((_, i) => i !== pi);
+  g.phases = g.phases.filter((_: Phase, i: number) => i !== pi);
       parts[gi] = g;
       return { protocol: { ...s.protocol, sections: [{ parts }] }, protoRev: s.protoRev + 1 };
     }),
