@@ -224,7 +224,9 @@ export default function CsvPhaseAnalyzer() {
   const [verbose, setVerbose] = useState(false);
 
   // Target options
-  const [targetProfile, setTargetProfile] = useState<"G6" | "G8">("G6");
+  type TargetProfile = "G4" | "G5" | "G6" | "G7" | "G8";
+  const currentProfile: TargetProfile = useProto((s: any) => s.profile) as TargetProfile;
+  const [targetProfile, setTargetProfile] = useState<TargetProfile>(currentProfile);
   const [targetParam, setTargetParam] = useState<"Temperature" | "Cool White">("Temperature");
 
   // App protocol state
@@ -314,6 +316,9 @@ export default function CsvPhaseAnalyzer() {
     return iv;
   }
 
+  // Note: targetProfile is a UI hint. Apply will modify the currently loaded protocol
+  // (which should be created for the selected room in the Editor). The group names
+  // (Temperature, Cool White) are consistent across G4–G8.
   function applyToProtocol() {
     if (!result || "error" in result) return;
     try {
@@ -363,7 +368,10 @@ export default function CsvPhaseAnalyzer() {
             value={targetProfile}
             onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetProfile(e.target.value as any)}
           >
+            <option value="G4">G4</option>
+            <option value="G5">G5</option>
             <option value="G6">G6</option>
+            <option value="G7">G7</option>
             <option value="G8">G8</option>
           </select>
         </div>
