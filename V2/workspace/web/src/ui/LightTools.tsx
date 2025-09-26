@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, /* add for spectrum and dots */ BarChart, Bar, Cell } from "recharts";
+import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend, /* add for spectrum and dots */ BarChart, Bar, Cell } from "recharts";
 
 // ===== Types =====
 type ChannelParams = { A: number; b: number };
@@ -266,15 +266,39 @@ export default function LightTools() {
             <ResponsiveContainer width="100%" height="100%">
               <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" />
+                <Legend
+                  verticalAlign="top"
+                  align="right"
+                  wrapperStyle={{ fontSize: 12 }}
+                  formatter={(val: string) => {
+                    // Map internal channel keys to display names
+                    const map: Record<string, string> = {
+                      coolWhite: 'Cool White',
+                      deepRed: 'Deep Red',
+                      farRed: 'Far Red',
+                      Total: 'Total (sum)',
+                    };
+                    return map[val] || val;
+                  }}
+                />
                 <XAxis dataKey="value" type="number" tickFormatter={(v) => `${v}`} label={{ value: "µmol/m²/s", position: "insideBottomRight", offset: -5 }} />
                 <YAxis dataKey="percent" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
                 <Tooltip formatter={(v: any, n: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? 'PPFD' : 'Percent']} labelFormatter={(l) => `PPFD: ${l}`} />
                 {/* Per-channel dashed curves */}
                 {percentSeries.map((s) => (
-                  <Line key={s.name} data={s.data} dataKey="percent" name={s.name} dot={false} type="monotone" strokeDasharray="4 2" stroke={colorFor(s.name)} />
+                  <Line
+                    key={s.name}
+                    data={s.data}
+                    dataKey="percent"
+                    name={s.name}
+                    dot={false}
+                    type="monotone"
+                    strokeDasharray="4 2"
+                    stroke={colorFor(s.name)}
+                  />
                 ))}
                 {/* Total curve (solid) */}
-                <Line data={totalPercentData} dataKey="percent" name="Total" dot={false} type="monotone" strokeWidth={2} />
+                <Line data={totalPercentData} dataKey="percent" name="Total" dot={false} type="monotone" strokeWidth={2} stroke="#222" />
                 {/* Current selection markers (one dot per channel) */}
                 {currentPoints.map((s) => (
                   <Line
