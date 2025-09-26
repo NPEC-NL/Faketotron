@@ -243,12 +243,24 @@ export default function CsvPhaseAnalyzer() {
   >(() => {
     if (!rawText) return null;
     try {
-      const { phases } = analyzeSimpleFromText(rawText, {
+      let { phases } = analyzeSimpleFromText(rawText, {
         secondsIndex,
         valueIndex,
         delimiter: delimiter ? delimiter : undefined,
         verbose,
       });
+
+      // --- Minute rounding policy ---
+      // Drop any phase whose raw duration is < 30s; for the rest round to nearest minute.
+      // (>=30s becomes at least 1 minute). Store back in seconds (minutes * 60).
+      phases = phases
+        .map((ph) => {
+          const secs = Number(ph.duration_seconds) || 0;
+            const mins = Math.round(secs / 60); // standard rounding, 30s threshold
+            if (mins <= 0) return null; // drop <30s phases
+            return { ...ph, duration_seconds: mins * 60 };
+        })
+        .filter(Boolean) as Phase[];
 
       const points: [string, any][] = [];
       for (const ph of phases as Phase[]) {
@@ -360,6 +372,8 @@ export default function CsvPhaseAnalyzer() {
       <p className="text-sm text-slate-600">
         Upload a CSV shaped like rows of <code>[seconds, value]</code> (index-based, no
         headers). The tool groups consecutive equal values and sums the seconds per run.
+        Afterwards durations are rounded to whole minutes: runs &lt; 30s are removed; runs
+        ≥ 30s are rounded to the nearest minute (e.g. 30–89s → 1:00, 90–149s → 2:00).
       </p>
 
       {/* Controls */}
