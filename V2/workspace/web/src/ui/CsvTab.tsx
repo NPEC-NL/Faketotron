@@ -337,6 +337,10 @@ export default function CsvPhaseAnalyzer() {
         return;
       }
       parts[gi].phases = replaced;
+      // Ensure legacy compatibility: guarantee group-name present on all parts
+      for (const p of parts) {
+        if (p && p["group-name"] == null && p.name) p["group-name"] = p.name;
+      }
       next.sections[0].parts = parts;
       setProtocol(next);
       // push to legacy editor via the expected event
@@ -346,6 +350,9 @@ export default function CsvPhaseAnalyzer() {
       alert("Failed to apply phases: " + (e?.message || String(e)));
     }
   }
+
+  const p = window.__lastProtocolApplied; // (I can add this reference in code)
+  console.log(JSON.stringify(p, null, 2));
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
