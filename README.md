@@ -106,6 +106,9 @@ The **CSV Tab** lets you import simple CSV files and convert them into protocol 
 * **Output**:
   * Human-readable tables of phase runs and points.
   * Machine-readable JSON (`.json`) that can be copied, downloaded, or applied directly to the current protocol.
+
+[CSV Tab](7.gif)
+
 **Workflow**
 1. Select **Target Profile** (G4–G8) and **Target Parameter** (e.g. *Temperature* or *Cool White*).
 2. Upload CSV with **“Choose CSV…”**.
