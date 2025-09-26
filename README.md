@@ -87,7 +87,7 @@ Each preset contains measured linear fits *(PPFD = A × % + b)* for **Cool White
   * Estimated PPFD per channel + total PPFD.
   * Line chart: PPFD vs % curves with current settings marked.
   * Spectrum-style bars: relative contributions of each channel.
-
+[Light Tools](6.gif)
 **Notes**
 
 * Values are approximate, based on linear regressions.

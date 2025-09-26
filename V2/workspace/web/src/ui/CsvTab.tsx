@@ -432,31 +432,12 @@ export default function CsvPhaseAnalyzer() {
         <>
           <div className="flex items-center gap-3">
             <button
-              onClick={copyJSON}
-              className="border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"
-            >
-              Copy JSON
-            </button>
-            <button
-              onClick={downloadJSON}
-              className="border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"
-            >
-              Download JSON
-            </button>
-            <button
               onClick={applyToProtocol}
               className="border rounded px-3 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-500"
               title={`Replace phases for ${targetParam} in current protocol`}
             >
               Apply to Protocol
             </button>
-          </div>
-
-          <div className="border rounded p-3">
-            <div className="font-medium mb-2">Output JSON</div>
-            <pre className="text-xs whitespace-pre-wrap">
-              {JSON.stringify(result.out, null, 2)}
-            </pre>
           </div>
 
           <div className="border rounded p-3">

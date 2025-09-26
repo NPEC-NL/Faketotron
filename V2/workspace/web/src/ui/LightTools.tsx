@@ -305,9 +305,12 @@ export default function LightTools() {
                     key={`dot-${s.name}`}
                     data={s.data}
                     dataKey="percent"
+                    // Hide marker lines from legend to avoid duplicates
+                    legendType="none"
                     name={`${s.name} (current)`}
                     stroke={colorFor(s.name)}
                     strokeOpacity={0}
+                    isAnimationActive={false}
                     dot={{ r: 4, stroke: colorFor(s.name), fill: "#fff", strokeWidth: 2 }}
                     activeDot={{ r: 5 }}
                     type="monotone"
