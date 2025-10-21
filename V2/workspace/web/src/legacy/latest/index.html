@@ -1670,20 +1670,7 @@ function integrityCheckAndSave(data){
 }
 
 // Add a debug JSON only button if not present
-if(!document.getElementById('btnSaveJsonOnly')){
-  const btn = document.createElement('button');
-  btn.textContent='Download Debug JSON';
-  btn.className='btn';
-  btn.id='btnSaveJsonOnly';
-  const saveBtn = document.getElementById('btnSave');
-  saveBtn && saveBtn.parentNode.insertBefore(btn, saveBtn.nextSibling);
-  btn.onclick=()=>{
-    if(!protocol){ alert('Nothing to save.'); return; }
-    const data=buildProtocolJson(); if(!data) return;
-    const v=validateProtocolObject(data); if(!v.ok){ alert('JSON debug export failed: '+v.reason); return; }
-    downloadText('protocol-debug.json', v.json, 'application/json');
-  };
-}
+// (Removed) Debug-only JSON download button was previously injected here.
 
 $('#btnSave').onclick=()=>{
   if(!protocol){alert('Nothing to save.');return;}

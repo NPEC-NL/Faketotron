@@ -251,17 +251,8 @@ export default function CsvPhaseAnalyzer() {
         verbose,
       });
 
-      // --- Minute rounding policy ---
-      // Drop any phase whose raw duration is < 30s; for the rest round to nearest minute.
-      // (>=30s becomes at least 1 minute). Store back in seconds (minutes * 60).
-      phases = phases
-        .map((ph) => {
-          const secs = Number(ph.duration_seconds) || 0;
-            const mins = Math.round(secs / 60); // standard rounding, 30s threshold
-            if (mins <= 0) return null; // drop <30s phases
-            return { ...ph, duration_seconds: mins * 60 };
-        })
-        .filter(Boolean) as Phase[];
+      // Keep seconds resolution: do not round to minutes and do not drop short runs.
+      // Still group consecutive identical values (handled by analyzeSimpleFromText).
 
       const points: [string, any][] = [];
       for (const ph of phases as Phase[]) {
@@ -289,28 +280,6 @@ export default function CsvPhaseAnalyzer() {
     };
     reader.onerror = () => setError("Failed to read the file.");
     reader.readAsText(file, "utf-8");
-  }
-
-  function copyJSON() {
-    if (!result) return;
-    const text = JSON.stringify(result.out, null, 2);
-    navigator.clipboard.writeText(text).catch(() => {});
-  }
-
-  function downloadJSON() {
-    if (!result) return;
-    const blob = new Blob([JSON.stringify(result.out, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    const base = (fileName || "phases").replace(/\.[^/.]+$/, "");
-    a.href = url;
-    a.download = `${base}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
   }
 
   function mapValueForTarget(v: any): number {
@@ -377,8 +346,7 @@ export default function CsvPhaseAnalyzer() {
       <p className="text-sm text-slate-600">
         Upload a CSV shaped like rows of <code>[seconds, value]</code> (index-based, no
         headers). The tool groups consecutive equal values and sums the seconds per run.
-        Afterwards durations are rounded to whole minutes: runs &lt; 30s are removed; runs
-        ≥ 30s are rounded to the nearest minute (e.g. 30–89s → 1:00, 90–149s → 2:00).
+        Durations are kept with full seconds precision (no rounding to minutes).
       </p>
 
       {/* Controls */}
