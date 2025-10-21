@@ -81,9 +81,12 @@ export default function FilesTab() {
   }
   function onSaveFyt() {
     try {
-      // Save FYT as pure JSON text ending exactly after the final '}' to avoid trailer/footers
-      const jsonText = JSON.stringify(protocol, null, 2);
-      downloadText("protocol.fyt", jsonText, "application/json");
+      // Save FYT as binary with header+JSON+trailer using core encoder
+      let bytes: Uint8Array;
+      const enc: any = encodeFYT as any;
+      try { bytes = enc(protocol); }
+      catch { bytes = enc({ protocol, description: (protocol as any).description ?? "" }); }
+      downloadBytes("protocol.fyt", bytes);
     } catch (e: any) {
       alert("Failed to save FYT: " + e?.message);
     }
