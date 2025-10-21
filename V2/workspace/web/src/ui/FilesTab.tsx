@@ -51,9 +51,20 @@ export default function FilesTab() {
   async function onLoadFyt() {
     try {
       const f = await pickFile(".fyt,application/octet-stream");
-      const buf = new Uint8Array(await f.arrayBuffer());
-      const decoded: any = decodeFYT(buf);
-      const p: Protocol = { ...decoded.protocol, description: decoded.description ?? "" };
+      const raw = new Uint8Array(await f.arrayBuffer());
+      // Try decode as binary FYT; if it fails, try JSON-only after trimming any footer
+      let p: Protocol;
+      try {
+        const decoded: any = decodeFYT(raw);
+        p = { ...decoded.protocol, description: decoded.description ?? "" } as Protocol;
+      } catch (e) {
+        // Fallback: treat as text and trim anything after the final closing brace
+        const text = new TextDecoder("utf-8").decode(raw);
+        const trimmed = text.slice(0, Math.max(0, text.lastIndexOf("}") + 1));
+        const obj = JSON.parse(trimmed);
+        if (!obj.description) obj.description = "";
+        p = obj as Protocol;
+      }
       setProtocol(p);
       window.dispatchEvent(new CustomEvent("protocol:loaded", { detail: { reason: "file" } }));
     } catch (e: any) {
@@ -70,11 +81,9 @@ export default function FilesTab() {
   }
   function onSaveFyt() {
     try {
-      let bytes: Uint8Array;
-      const enc: any = encodeFYT as any;
-      try { bytes = enc(protocol); }
-      catch { bytes = enc({ protocol, description: (protocol as any).description ?? "" }); }
-      downloadBytes("protocol.fyt", bytes);
+      // Save FYT as pure JSON text ending exactly after the final '}' to avoid trailer/footers
+      const jsonText = JSON.stringify(protocol, null, 2);
+      downloadText("protocol.fyt", jsonText, "application/json");
     } catch (e: any) {
       alert("Failed to save FYT: " + e?.message);
     }

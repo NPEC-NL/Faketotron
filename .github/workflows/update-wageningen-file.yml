@@ -4,14 +4,12 @@ on:
   workflow_dispatch: {}
   push:
     branches:
-      - Wageningen-with-CSV
-      - Wageningen-final-development
-      - V2
+      - Wageningen-main
+      - Wageningen-Dev21.10.2025
   pull_request:
     branches:
-      - Wageningen-with-CSV
-      - Wageningen-final-development
-      - V2
+      - Wageningen-main
+      - Wageningen-Dev21.10.2025
 
 permissions:
   contents: write
