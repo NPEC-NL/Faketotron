@@ -4,12 +4,12 @@ on:
   workflow_dispatch: {}
   push:
     branches:
-      - Wageningen-main
-      - Wageningen-Dev21.10.2025
+      - 'Wageningen-*'
+      - V2
   pull_request:
     branches:
-      - Wageningen-main
-      - Wageningen-Dev21.10.2025
+      - 'Wageningen-*'
+      - V2
 
 permissions:
   contents: write
