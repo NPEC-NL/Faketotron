@@ -88,7 +88,6 @@ Each preset contains measured linear fits *(PPFD = A × % + b)* for **Cool White
   * Line chart: PPFD vs % curves with current settings marked.
   * Spectrum-style bars: relative contributions of each channel.
 <img src="6.gif" alt="Light Tools" width="100%">
-<video src="6.mp4" width="100%" autoplay loop muted playsinline></video>
 
 
 **Notes**
@@ -111,7 +110,6 @@ The **CSV Tab** lets you import simple CSV files and convert them into protocol 
   * Machine-readable JSON (`.json`) that can be copied, downloaded, or applied directly to the current protocol.
 
 <img src="7.gif" alt="CSV Tab" width="100%">
-<video src="7(1).mp4" width="100%" autoplay loop muted playsinline></video>
 
 **Workflow**
 1. Select **Target Profile** (G4–G8) and **Target Parameter** (e.g. *Temperature* or *Cool White*).
