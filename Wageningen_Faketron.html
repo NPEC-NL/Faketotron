@@ -1715,23 +1715,15 @@ function computeJsonForFyt(data){
 function integrityCheckAndSave(data){
   const v = validateProtocolObject(data);
   if(!v.ok){ alert('Integrity check failed (pre-stringify): '+v.reason); return; }
-  const jsonForFyt = computeJsonForFyt(data);
+  // Build JSON text for .fyt as pure JSON that ends exactly after '}' (no trailer/footers)
+  const jsonFytText = formatJsonCRLF(data);
   // quick parse test (normalize CRLF -> LF) to ensure valid JSON
-  try{ JSON.parse(jsonForFyt.replace(/\\r\\n/g,'\\n')); }catch(e){ alert('Integrity check failed (parse after CRLF normalize): '+(e.message||e)); return; }
-  const jsonHash = hashFNV1a(jsonForFyt);
-  console.log('[save-debug] JSON length', jsonForFyt.length, 'hash', jsonHash);
-  // Embed checksum trailer into description (non-destructive append)
-  const marker = \` [CHK json=\${jsonForFyt.length} h=\${jsonHash}]\`;
-  if(!/ \\[CHK json=\\d+ h=[0-9a-f]{8}\\]$/.test(data.description||'')){ data.description = (data.description||'') + marker; }
-  const fytBytes = buildFytBinary(data);
-  console.log('[save-debug] FYT length', fytBytes.length, 'header[22..23]=', fytBytes[22], fytBytes[23]);
-  // final sanity: ensure last json byte prior to trailer is '}'
-  const jsonEndIndex = fytBytes.lastIndexOf(0x7d); // '}'
-  if(jsonEndIndex < 0){ alert('Integrity check failed: could not locate JSON end (no } found).'); return; }
-  // Provide simple checksum in description (optional) - not altering data.description here
-  downloadText('protocol.json', JSON.stringify(data,null,2), 'application/json');
-  downloadBytes('protocol.fyt', fytBytes);
-  alert('Saved with integrity hash '+jsonHash+' (see console for details).');
+  try{ JSON.parse(jsonFytText.replace(/\\r\\n/g,'\\n')); }catch(e){ alert('Integrity check failed (parse after CRLF normalize): '+(e.message||e)); return; }
+  // Also provide a separate JSON download for convenience (disabled per request)
+  // downloadText('protocol.json', JSON.stringify(data,null,2), 'application/json');
+  // Save FYT as JSON-only to avoid any extra bytes beyond the closing brace
+  downloadText('protocol.fyt', jsonFytText, 'application/json');
+  // Silently complete save.
 }
 
 // Add a debug JSON only button if not present
@@ -1741,12 +1733,9 @@ $('#btnSave').onclick=()=>{
   if(!protocol){alert('Nothing to save.');return;}
   if(!isProtocolValid()){alert('All variables must be assigned and each type must have a group before saving.');return;}
   const data=buildProtocolJson(); if(!data) return;
-  const totals = groups.map(g=>g.phases.reduce((s,p)=>s+durationToSeconds(p.duration),0));
-  const allSame = totals.every(t=>t===totals[0]);
-  if(!allSame){
-    const ok = confirm('Not all variable groups have the same time duration. Do you want to save protocol anyway?');
-    if(!ok) return;
-  }
+  // Compute total duration per group using phaseDurationSeconds (supports csv-import)
+  const totals = groups.map(g=>g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0));
+  // If not all the same, proceed silently (no intrusive prompt).
   integrityCheckAndSave(data);
 };
 
