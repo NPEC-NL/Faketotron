@@ -1,5 +1,6 @@
 import React, { useMemo, useRef, useState } from "react";
 import * as Store from "../state/store";
+import { formatDurationPreserveDays } from "../utils/time";
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
 /**
@@ -265,7 +266,7 @@ export default function CsvPhaseAnalyzer() {
       const points: [string, any][] = [];
       for (const ph of phases as Phase[]) {
         const dur = Number(ph?.duration_seconds ?? 0);
-        if (dur > 0) points.push([formatHHMMSS(dur), ph.value]);
+        if (dur > 0) points.push([formatDurationPreserveDays(dur), ph.value]);
       }
 
       return { phases, points, out: { phases: [{ type: "csv-import", points }] } };
