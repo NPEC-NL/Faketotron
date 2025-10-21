@@ -57,6 +57,23 @@ function sampleCloud(ph: AnyPhase, t0: number) {
   return { x0: t0, x1: t0 + dur, y0, y1 };
 }
 
+function sampleCsvImport(ph: AnyPhase, t0: number): XY[] {
+  const pts = Array.isArray(ph.points) ? ph.points : [];
+  const series: XY[] = [];
+  let t = t0;
+  for (const entry of pts) {
+    if (!Array.isArray(entry) || entry.length < 2) continue;
+    const sec = parseDurationToSeconds(entry[0]);
+    const val = Number(entry[1] ?? 0);
+    if (sec <= 0) continue;
+    series.push({ x: t, y: val });
+    t += sec;
+    series.push({ x: t, y: val });
+  }
+  if (!series.length) series.push({ x: t0, y: 0 }, { x: t0 + 1, y: 0 });
+  return series;
+}
+
 export function sampleGroup(g: any): {
   series: XY[];
   clouds: Array<{ x0: number; x1: number; y0: number; y1: number }>;
@@ -79,6 +96,8 @@ export function sampleGroup(g: any): {
       const pts = sampleSin(ph, t);   series.push(...pts); t = pts[pts.length - 1].x;
     } else if (type === "cloud" || type === "clouds") {
       const box = sampleCloud(ph, t); clouds.push(box); t = box.x1;
+    } else if (type === "csv-import") {
+      const pts = sampleCsvImport(ph, t); series.push(...pts); t = pts[pts.length - 1].x;
     } else {
       const pts = sampleConst(ph, t); series.push(...pts); t = pts[pts.length - 1].x;
     }

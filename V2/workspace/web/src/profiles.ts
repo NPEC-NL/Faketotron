@@ -11,7 +11,8 @@ export type PhaseCloud = {
   fluctuation_mean_ratio: number; fluctuation_var: number;
   cloud_drop_coeff: number;
 };
-export type Phase = PhaseConst | PhaseRamp | PhaseSin | PhaseCloud;
+export type PhaseCsvImport = { type: "csv-import"; points: Array<[string, number]> };
+export type Phase = PhaseConst | PhaseRamp | PhaseSin | PhaseCloud | PhaseCsvImport;
 
 export type Group = {
   name: string;

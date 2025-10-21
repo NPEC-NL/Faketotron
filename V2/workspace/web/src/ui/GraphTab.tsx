@@ -173,12 +173,13 @@ function applyDrafts(proto: any, draftsMap: Map<string, DraftPatch>) {
   return out;
 }
 
-function normalizeType(t: any): "fixed"|"ramp"|"sin"|"clouds" {
+function normalizeType(t: any): "fixed"|"ramp"|"sin"|"clouds"|"csv-import" {
   const s = String(t || "").toLowerCase().trim();
   if (s === "fixed" || s === "const" || s === "constant") return "fixed";
   if (s === "ramp") return "ramp";
   if (s === "sin" || s === "sine") return "sin";
   if (s === "clouds" || s === "cloud") return "clouds";
+  if (s === "csv-import") return "csv-import";
   return "fixed";
 }
 function ensurePhaseShape(raw: any) {
@@ -190,6 +191,7 @@ function ensurePhaseShape(raw: any) {
   if (t === "clouds")return { duration: "01:00:00", step: "00:05:00", offset:0, amplitude:0,
                                cloud_density:0, cloud_position:0, cloud_duration_mean:0, cloud_duration_var:0,
                                fluctuation_mean_ratio:0, fluctuation_var:0, cloud_drop_coeff:0, ...base };
+  if (t === "csv-import") return { points: Array.isArray(raw?.points) ? raw.points : [], ...base };
   return base;
 }
 

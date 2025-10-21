@@ -330,14 +330,19 @@ export default function CsvPhaseAnalyzer() {
   function applyToProtocol() {
     if (!result || "error" in result) return;
     try {
-      const newPhases = (result as any).phases as Phase[];
-      const replaced = newPhases
-        .filter((ph: Phase) => Number(ph.duration_seconds) > 0)
-        .map((ph: Phase) => ({
-          type: "const",
-          value: mapValueForTarget(ph.value),
-          duration: formatHHMMSS(Number(ph.duration_seconds)),
-        }));
+      const pointsRaw = (result as any).points as [string, any][];
+      // Map values to machine scale (e.g., Temperature in tenths, Cool White 0..100)
+      const points = pointsRaw
+        .filter(([t]) => !!t)
+        .map(([t, v]) => [t, mapValueForTarget(v)] as [string, number]);
+
+      // Replace with a single phase of type "csv-import"
+      const replaced = [
+        {
+          type: "csv-import",
+          points,
+        } as any,
+      ];
       const next = typeof structuredClone === "function"
         ? structuredClone(protocol)
         : JSON.parse(JSON.stringify(protocol));

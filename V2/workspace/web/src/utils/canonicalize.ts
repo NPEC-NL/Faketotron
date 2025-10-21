@@ -78,6 +78,14 @@ function canonicalizePhase(p: any): any {
     };
   }
 
+  if (p.type === "csv-import") {
+    const pts = Array.isArray(p.points) ? p.points : [];
+    const normPts = pts
+      .filter((it: any) => Array.isArray(it) && it.length >= 2)
+      .map((it: any) => [canonTimeStr(it[0]), it[1]]);
+    return { ...p, points: normPts };
+  }
+
   return p;
 }
 
