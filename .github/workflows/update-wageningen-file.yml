@@ -5,12 +5,21 @@ on:
   push:
     branches:
       - Wageningen-with-CSV
+      - Wageningen-final-development
+      - V2
+  pull_request:
+    branches:
+      - Wageningen-with-CSV
+      - Wageningen-final-development
+      - V2
 
 permissions:
   contents: write
 
 jobs:
   build-and-commit:
+    # Prevent infinite loops when this workflow commits the built HTML
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
