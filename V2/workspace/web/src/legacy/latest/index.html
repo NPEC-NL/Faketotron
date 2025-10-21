@@ -1666,7 +1666,7 @@ function integrityCheckAndSave(data){
   // Provide simple checksum in description (optional) - not altering data.description here
   downloadText('protocol.json', JSON.stringify(data,null,2), 'application/json');
   downloadBytes('protocol.fyt', fytBytes);
-  alert('Saved with integrity hash '+jsonHash+' (see console for details).');
+  // Silently complete save; no user-facing integrity hash alert.
 }
 
 // Add a debug JSON only button if not present
@@ -1676,12 +1676,9 @@ $('#btnSave').onclick=()=>{
   if(!protocol){alert('Nothing to save.');return;}
   if(!isProtocolValid()){alert('All variables must be assigned and each type must have a group before saving.');return;}
   const data=buildProtocolJson(); if(!data) return;
-  const totals = groups.map(g=>g.phases.reduce((s,p)=>s+durationToSeconds(p.duration),0));
-  const allSame = totals.every(t=>t===totals[0]);
-  if(!allSame){
-    const ok = confirm('Not all variable groups have the same time duration. Do you want to save protocol anyway?');
-    if(!ok) return;
-  }
+  // Compute total duration per group using phaseDurationSeconds (supports csv-import)
+  const totals = groups.map(g=>g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0));
+  // If not all the same, proceed silently (no intrusive prompt).
   integrityCheckAndSave(data);
 };
 
