@@ -369,8 +369,7 @@ export default function CsvPhaseAnalyzer() {
     }
   }
 
-  const p = window.__lastProtocolApplied; // (I can add this reference in code)
-  console.log(JSON.stringify(p, null, 2));
+  // no-op
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
