@@ -605,6 +605,24 @@ function normalizeDurationStr(str){
   return secondsToDisplayDuration(sec);
 }
 
+// Compute total duration (seconds) for a phase, including csv-import
+function phaseDurationSeconds(p){
+  if(!p) return 0;
+  if(p.type==='csv-import'){
+    const pts = Array.isArray(p.points)? p.points : [];
+    return pts.reduce((acc, it)=>{
+      if(Array.isArray(it) && it.length>=2){
+        const d = durationToSeconds(it[0]);
+        if(Number.isFinite(d)) return acc + d;
+      }
+      return acc;
+    }, 0);
+  }
+  // default: phases with explicit duration
+  const sec = durationToSeconds(p.duration||'00:00:00');
+  return Number.isFinite(sec)? sec : 0;
+}
+
 
 function intInRange(n, min, max){return Number.isInteger(n) && n>=min && n<=max;}
 // Keep group ordering stable by type then name
@@ -622,7 +640,7 @@ function isProtocolValid(){
   return hasAll && noneUnassigned;
 }
 function fmtVal(type,v){ if(type==='Temperature'){return (Number(v)/10).toFixed(1);} return String(v); }
-function labelPhase(t){return t==='const'?'Constant':t==='ramp'?'Ramp':t==='sin'?'Sine':t==='cloud'?'Cloud':t}
+function labelPhase(t){return t==='const'?'Constant':t==='ramp'?'Ramp':t==='sin'?'Sine':t==='cloud'?'Cloud':t==='csv-import'?'CSV Import':t}
 
 /* ============================================================
    RENDER
@@ -656,11 +674,15 @@ function renderTabs(){
 }
 function updateGroupDurationField(){
   const ag=groups.find(x=>x.id===activeGroupId);
-  const hours=ag?ag.phases.reduce((s,p)=>s+durationToHours(p.duration),0):0;
+  const seconds=ag?ag.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0):0;
+  const hours=seconds/3600;
   $('#groupDuration').textContent=ag?`${hours.toFixed(2)} hours`:'--';
 }
 function updateOverallDuration(){
-  const longestHours=Math.max(0, ...groups.map(g=>g.phases.reduce((s,p)=>s+durationToHours(p.duration),0)));
+  const longestHours=Math.max(0, ...groups.map(g=>{
+    const sec=g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0);
+    return sec/3600;
+  }));
   $('#duration').value = `${longestHours.toFixed(2)} hours`;
 }
 
@@ -685,6 +707,11 @@ function buildSummary(varType,p){
   } else if(p.type==='cloud'){
     const pairs=[["Amplitude", fmtVal(varType,p.amplitude)],["Offset", fmtVal(varType,p.offset)],["Cloud Attenuation", (Number(p.cloud_drop_coeff).toFixed(2))],["Cloud Density", p.cloud_density+"%"],["Cloud Position", p.cloud_position+"%"],["Cloud Duration Mean", p.cloud_duration_mean],["Cloud Duration Var", p.cloud_duration_var],["Fluctuation Var", p.fluctuation_var],["Fluctuation Mean Ratio", p.fluctuation_mean_ratio]];
     summaryGrid(wrap,pairs);
+  } else if(p.type==='csv-import'){
+    const n = Array.isArray(p.points) ? p.points.length : 0;
+    const sec = phaseDurationSeconds(p);
+    const dur = secondsToDisplayDuration(sec);
+    summaryGrid(wrap, [["Points", String(n)],["Total", dur]]);
   }
   return wrap;
 }
@@ -739,9 +766,10 @@ function renderPhases(){
     const cIdx = document.createElement('div'); cIdx.textContent = i+1;
 
     // (3) duration
-    const cDur = document.createElement('div');
-    cDur.className='clickable';
-    cDur.textContent = normalizeDurationStr(p.duration||'01:00:00');
+  const cDur = document.createElement('div');
+  cDur.className='clickable';
+  const pSec = phaseDurationSeconds(p);
+  cDur.textContent = secondsToDisplayDuration(pSec);
     cDur.onclick = () => { insertAfterIndex = i; openEditPhase(p); };
 
     // (4) type
