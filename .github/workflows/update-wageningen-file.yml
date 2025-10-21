@@ -5,11 +5,9 @@ on:
   push:
     branches:
       - 'Wageningen-*'
-      - V2
   pull_request:
     branches:
       - 'Wageningen-*'
-      - V2
 
 permissions:
   contents: write
