@@ -9,9 +9,11 @@ For the longevity of the chambers, do not push experiments to the system’s abs
 Without using CSV import:  Maximum supported duration is 45 days (so 5 weeks).
 With CSV import: Limit runs to 5 days maximum. Longer CSV-driven protocols may become unstable or crash, depending on the total number of phase changes.
 Example: Around 300 phases within one lamp type may already trigger an error or crash
+
 Time Resolution
 All durations use the format DD.HH:MM:SS (Days.Hours:Minutes:Seconds).
 Both normal phase changes and CSV-driven data have second-level resolution.
+
 Getting Help
 If you encounter unexpected behavior or an error:
 Describe what you were doing and what happened (include any error message if possible).
