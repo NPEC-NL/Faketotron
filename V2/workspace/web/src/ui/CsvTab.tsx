@@ -376,15 +376,6 @@ export default function CsvPhaseAnalyzer() {
           />
         </div>
         <div className="md:col-span-2 flex items-center gap-4">
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={verbose}
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) => setVerbose(e.target.checked)}
-            />
-            Verbose console logging
-          </label>
-
           <button
             onClick={onPickFileClick}
             className="ml-auto border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"

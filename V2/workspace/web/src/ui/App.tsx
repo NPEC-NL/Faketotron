@@ -52,8 +52,8 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
-        {TabBtn("csv", "CSV")}
-  {TabBtn("inspector", "FYT Inspector")}
+    {TabBtn("csv", "CSV")}
+    {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
       </div>
 
       <div
