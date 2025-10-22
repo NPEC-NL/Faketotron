@@ -4,11 +4,12 @@ import EditorTab from "./EditorTab";
 import GraphTab from "./GraphTab";
 import LightTools from "./LightTools";
 import CsvTab from "./CsvTab";
+import FytInspector from "./FytInspector";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "editor" | "graph" | "light" | "csv";
+type TabKey = "editor" | "graph" | "light" | "csv" | "inspector";
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>("editor");
@@ -52,6 +53,7 @@ export default function App() {
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
         {TabBtn("csv", "CSV")}
+  {TabBtn("inspector", "FYT Inspector")}
       </div>
 
       <div
@@ -76,6 +78,10 @@ export default function App() {
 
       <div style={{ display: tab === "csv" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <CsvTab />
+      </div>
+
+      <div style={{ display: tab === "inspector" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
+        <FytInspector />
       </div>
     </div>
   );
