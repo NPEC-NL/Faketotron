@@ -302,45 +302,45 @@ const RANGES={
 };
 const DEF={
   const:{
-    "CO2":{value:1000,duration:"01:00:00"},
-    "Cool White":{value:100,duration:"01:00:00"},
-    "DeepRed":{value:100,duration:"01:00:00"},
-    "FarRed":{value:100,duration:"01:00:00"},
-    "Humidity":{value:90,duration:"01:00:00"},
-    "Temperature":{value:40,duration:"01:00:00"},
-    "UVB":{value:0,duration:"01:00:00"}
+    "CO2":{value:1000,duration:"00.01:00:00"},
+    "Cool White":{value:100,duration:"00.01:00:00"},
+    "DeepRed":{value:100,duration:"00.01:00:00"},
+    "FarRed":{value:100,duration:"00.01:00:00"},
+    "Humidity":{value:90,duration:"00.01:00:00"},
+    "Temperature":{value:40,duration:"00.01:00:00"},
+    "UVB":{value:0,duration:"00.01:00:00"}
   },
   ramp:{
-    "CO2":{start:0,end:1000,duration:"01:00:00"},
-    "Cool White":{start:0,end:100,duration:"01:00:00"},
-    "DeepRed":{start:0,end:100,duration:"01:00:00"},
-    "FarRed":{start:0,end:100,duration:"01:00:00"},
-    "Humidity":{start:35,end:90,duration:"01:00:00"},
-    "Temperature":{start:10,end:40,duration:"01:00:00"},
-    "UVB":{start:0,end:100,duration:"01:00:00"}
+    "CO2":{start:0,end:1000,duration:"00.01:00:00"},
+    "Cool White":{start:0,end:100,duration:"00.01:00:00"},
+    "DeepRed":{start:0,end:100,duration:"00.01:00:00"},
+    "FarRed":{start:0,end:100,duration:"00.01:00:00"},
+    "Humidity":{start:35,end:90,duration:"00.01:00:00"},
+    "Temperature":{start:10,end:40,duration:"00.01:00:00"},
+    "UVB":{start:0,end:100,duration:"00.01:00:00"}
   },
   sin:{
-    "CO2":{min:0,max:1000,period:"00:10:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "Cool White":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "DeepRed":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "FarRed":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "Humidity":{min:35,max:90,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "Temperature":{min:10,max:40,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"},
-    "UVB":{min:0,max:100,period:"01:00:00",phaseOffset:"00:00:00",duration:"01:00:00"}
+    "CO2":{min:0,max:1000,period:"00.00:10:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "Cool White":{min:0,max:100,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "DeepRed":{min:0,max:100,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "FarRed":{min:0,max:100,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "Humidity":{min:35,max:90,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "Temperature":{min:10,max:40,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"},
+    "UVB":{min:0,max:100,period:"00.01:00:00",phaseOffset:"00.00:00:00",duration:"00.01:00:00"}
   },
   cloud:{
-    "CO2":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Cool White":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "DeepRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "FarRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Humidity":{amplitude:90,offset:35,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "Temperature":{amplitude:10,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"},
-    "UVB":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"01:00:00"}
+    "CO2":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "Cool White":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "DeepRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "FarRed":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "Humidity":{amplitude:90,offset:35,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "Temperature":{amplitude:10,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"},
+    "UVB":{amplitude:100,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:(Math.round((0.15)*100)/100),fluctuation_var:10,cloud_drop_coeff:0.5,duration:"00.01:00:00"}
   }
 };
 
 // Fixed ramp step for all ramp phases
-const RAMP_STEP = "00:00:05";
+const RAMP_STEP = "00.00:00:05";
 // === Profiles (external JSONs injected) ===
 /* Only expose G4–G8 with provided legacy mappings and logic values. */
 const PROFILE_JSONS = {
@@ -651,17 +651,15 @@ function durationToHours(s){ const sec=durationToSeconds(s); return Number.isFin
 function secondsToDisplayDuration(sec){
   sec = Math.max(0, Math.floor(sec||0));
   const SS = (n)=> String(n).padStart(2,'0');
+  const DD = (n)=> String(n).padStart(2,'0');
   const days = Math.floor(sec/86400);
   let rem = sec % 86400;
   const h = Math.floor(rem/3600);
   rem %= 3600;
   const m = Math.floor(rem/60);
   const s = rem % 60;
-  if(days>0){
-    return \`\${days}.\${SS(h)}:\${SS(m)}:\${SS(s)}\`;
-  }else{
-    return \`\${SS(h)}:\${SS(m)}:\${SS(s)}\`;
-  }
+  // Always show days component (00.DD:HH:MM:SS)
+  return \`\${DD(days)}.\${SS(h)}:\${SS(m)}:\${SS(s)}\`;
 }
 // Normalize an input duration string into the display rule, or return null if invalid
 function normalizeDurationStr(str){
@@ -951,7 +949,7 @@ function buildPhaseFields(varType,phType){
 
   const hint=(text)=>\`<div style="grid-column:1/-1;color:#566;font-size:12px;margin-top:2px">\${text}</div>\`;
   const f=(label,id,value,placeholder='')=>\`<label for="\${id}">\${label}:</label><input id="\${id}" class="input" value="\${value}" placeholder="\${placeholder}">\`;
-  const baseDur='01:00:00';
+  const baseDur='00.01:00:00';
   const midVal=Math.round((range.min+range.max)/2);
   const d=(DEF[phType]&&DEF[phType][varType])?DEF[phType][varType]:
           (phType==='const'?{value:midVal,duration:baseDur}:
@@ -960,13 +958,13 @@ function buildPhaseFields(varType,phType){
            phType==='cloud'?{amplitude:midVal,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:0.15,fluctuation_var:10,cloud_drop_coeff:0.5,duration:baseDur}:
            {value:midVal,duration:baseDur});
   if(phType==='const'){
-    wrap.innerHTML=\`<div class="grid2">\${f('Value', 'phVal', d.value)}\${f('Duration', 'phDur', d.duration, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}</div>\` + hint(\`Range \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
+    wrap.innerHTML=\`<div class="grid2">\${f('Value', 'phVal', d.value)}\${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}</div>\` + hint(\`Range \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
   }else if(phType==='ramp'){
-    wrap.innerHTML=\`<div class="grid2">\${f('Start', 'phStart', d.start)}\${f('End', 'phEnd', d.end)}\${f('Duration', 'phDur', d.duration, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}</div>\` + hint(\`Range \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
+    wrap.innerHTML=\`<div class="grid2">\${f('Start', 'phStart', d.start)}\${f('End', 'phEnd', d.end)}\${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'D.HH:MM:SS')}</div>\` + hint(\`Range \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
   }else if(phType==='sin'){
-    wrap.innerHTML=\`<div class="grid2">\${f('Duration', 'phDur', d.duration, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Min', 'phMin', d.min)}\${f('Max', 'phMax', d.max)}\${f('Period', 'phPeriod', d.period, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Phase Offset', 'phOffset', d.phaseOffset, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}</div>\` + hint(\`Min/Max in \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
+    wrap.innerHTML=\`<div class="grid2">\${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'D.HH:MM:SS')}\${f('Min', 'phMin', d.min)}\${f('Max', 'phMax', d.max)}\${f('Period', 'phPeriod', d.period, 'D.HH:MM:SS')}\${f('Phase Offset', 'phOffset', d.phaseOffset, 'D.HH:MM:SS')}</div>\` + hint(\`Min/Max in \${range.min}–\${range.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
   }else if(phType==='cloud'){
-    wrap.innerHTML=\`<div class="grid2">\${f('Duration', 'phDur', d.duration, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'HH:MM:SS (or D.HH:MM:SS for >24h)')}\${f('Amplitude', 'phAmp', d.amplitude)}\${f('Offset', 'phOff', d.offset)}\${f('Cloud Density', 'phDen', d.cloud_density)}\${f('Cloud Position', 'phPos', d.cloud_position)}\${f('Cloud Duration Mean (min)', 'phCMean', d.cloud_duration_mean)}\${f('Cloud Duration Var', 'phCVar', d.cloud_duration_var)}\${f('Fluctuation Mean Ratio', 'phFR', d.fluctuation_mean_ratio)}\${f('Fluctuation Var', 'phFV', d.fluctuation_var)}\${f('Cloud Attenuation', 'phDrop', (typeof d.cloud_drop_coeff==='number'? d.cloud_drop_coeff.toFixed(2): d.cloud_drop_coeff))}</div>\` + hint(\`Density/Position: integers 0–100. Amplitude/Offset within \${effRange.min}–\${effRange.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
+    wrap.innerHTML=\`<div class="grid2">\${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}\${f('Step (fixed)', 'phStep', RAMP_STEP, 'D.HH:MM:SS')}\${f('Amplitude', 'phAmp', d.amplitude)}\${f('Offset', 'phOff', d.offset)}\${f('Cloud Density', 'phDen', d.cloud_density)}\${f('Cloud Position', 'phPos', d.cloud_position)}\${f('Cloud Duration Mean (min)', 'phCMean', d.cloud_duration_mean)}\${f('Cloud Duration Var', 'phCVar', d.cloud_duration_var)}\${f('Fluctuation Mean Ratio', 'phFR', d.fluctuation_mean_ratio)}\${f('Fluctuation Var', 'phFV', d.fluctuation_var)}\${f('Cloud Attenuation', 'phDrop', (typeof d.cloud_drop_coeff==='number'? d.cloud_drop_coeff.toFixed(2): d.cloud_drop_coeff))}</div>\` + hint(\`Density/Position: integers 0–100. Amplitude/Offset within \${effRange.min}–\${effRange.max}\${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}\`);
   }
   // lock step & cloud drop fields (visible but uneditable)
   setTimeout(()=>{const st=$('#phStep'); if(st){ st.readOnly=true; st.classList.add('ro'); }},0);}
@@ -987,7 +985,7 @@ function readPhaseFromForm(varType){
     if(n<min||n>max) return {ok:false,msg:\`Out of range (\${min}-\${max})\`};
     return {ok:true,val:n};
   };
-  const durRaw=$('#phDur').value||'01:00:00';
+  const durRaw=$('#phDur').value||'00.01:00:00';
   const dur = normalizeDurationStr(durRaw);
   if(!dur){ alert('Duration must be HH:MM:SS or D.HH:MM:SS (e.g., 05:07:09 or 1.05:07:09)'); return null; }
 
@@ -1006,8 +1004,8 @@ function readPhaseFromForm(varType){
   }else if(t==='sin'){
     let mnC=clampCheck($('#phMin').value,rng.min,rng.max,{requireInt:!tempDecimalAllowed}); if(!mnC.ok){alert('Min: '+mnC.msg);return null;}
     let mxC=clampCheck($('#phMax').value,rng.min,rng.max,{requireInt:!tempDecimalAllowed}); if(!mxC.ok){alert('Max: '+mxC.msg);return null;}
-    const periodRaw=$('#phPeriod').value||'01:00:00'; const period=normalizeDurationStr(periodRaw); if(!period){alert('Period must be HH:MM:SS or D.HH:MM:SS');return null;}
-    const offsetRaw=$('#phOffset').value||'00:00:00'; const offset=normalizeDurationStr(offsetRaw); if(!offset){alert('Phase Offset must be HH:MM:SS or D.HH:MM:SS');return null;}
+  const periodRaw=$('#phPeriod').value||'00.01:00:00'; const period=normalizeDurationStr(periodRaw); if(!period){alert('Period must be D.HH:MM:SS');return null;}
+  const offsetRaw=$('#phOffset').value||'00.00:00:00'; const offset=normalizeDurationStr(offsetRaw); if(!offset){alert('Phase Offset must be D.HH:MM:SS');return null;}
     let mn=mnC.val,mx=mxC.val; if(tempDecimalAllowed&&rng.scale){mn=Math.round(mn*rng.scale);mx=Math.round(mx*rng.scale);} else if(rng.scale){mn*=rng.scale;mx*=rng.scale;}
     const step=(($('#phStep')?.value)||RAMP_STEP);
     // Order will be enforced in buildParts
