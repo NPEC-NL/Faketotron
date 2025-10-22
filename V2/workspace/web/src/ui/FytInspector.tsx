@@ -6,6 +6,12 @@ type InspectResult = {
   headerOk: boolean;
   header22: number;
   header23: number;
+  headerBytesHex: string;
+  headerByte19: number;
+  headerByte20: number;
+  headerByte21: number;
+  headerByte24: number;
+  headerByte25: number;
   jsonStart: number;
   jsonEnd: number;
   jsonLength: number;
@@ -90,6 +96,13 @@ export default function FytInspector() {
       })();
       const header22 = buf[22] ?? 0;
       const header23 = buf[23] ?? 0;
+      const headerFirst32 = Array.from(buf.slice(0, Math.min(32, buf.length)))
+        .map(b => b.toString(16).padStart(2,'0')).join(' ');
+      const b19 = buf[19] ?? 0;
+      const b20 = buf[20] ?? 0;
+      const b21 = buf[21] ?? 0;
+      const b24 = buf[24] ?? 0;
+      const b25 = buf[25] ?? 0;
       const { start, end } = findJsonSpan(buf);
       const jsonLength = end - start;
       const { impliedTotalLen, impliedJsonLen } = computeImpliedLengths(header22, header23);
@@ -100,6 +113,12 @@ export default function FytInspector() {
         headerOk,
         header22,
         header23,
+        headerBytesHex: headerFirst32,
+        headerByte19: b19,
+        headerByte20: b20,
+        headerByte21: b21,
+        headerByte24: b24,
+        headerByte25: b25,
         jsonStart: start,
         jsonEnd: end,
         jsonLength,
@@ -126,14 +145,21 @@ export default function FytInspector() {
         <div className="text-sm border rounded p-3">
           <div><b>File:</b> {res.fileName} ({res.size.toLocaleString()} bytes)</div>
           <div><b>Header prefix OK:</b> {String(res.headerOk)}</div>
+          <div className="mt-2 font-medium">Header (first 32 bytes hex)</div>
+          <div className="font-mono text-xs break-words">{res.headerBytesHex}</div>
           <div className="mt-2 font-medium">Header bytes</div>
           <ul className="list-disc ml-5">
             <li>header[22] (lo): {res.header22} (0x{res.header22.toString(16).padStart(2,'0')})</li>
             <li>header[23] (hi): {res.header23} (0x{res.header23.toString(16).padStart(2,'0')})</li>
+            <li>header[19]: {res.headerByte19} (0x{res.headerByte19.toString(16).padStart(2,'0')})</li>
+            <li>header[20]: {res.headerByte20} (0x{res.headerByte20.toString(16).padStart(2,'0')})</li>
+            <li>header[21]: {res.headerByte21} (0x{res.headerByte21.toString(16).padStart(2,'0')})</li>
+            <li>header[24]: {res.headerByte24} (0x{res.headerByte24.toString(16).padStart(2,'0')})</li>
+            <li>header[25]: {res.headerByte25} (0x{res.headerByte25.toString(16).padStart(2,'0')})</li>
           </ul>
           <div className="mt-2 font-medium">JSON span</div>
           <ul className="list-disc ml-5">
-            <li>start offset: {res.jsonStart.toLocaleString()}</li>
+            <li>start offset (header length): {res.jsonStart.toLocaleString()}</li>
             <li>end offset: {res.jsonEnd.toLocaleString()}</li>
             <li>length (derived): {res.jsonLength.toLocaleString()} bytes</li>
           </ul>
