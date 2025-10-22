@@ -2,24 +2,20 @@
 a mock Fytotron Client protocol editor and viewer.
 
 ## Limitations & Practical Recommendations
-To ensure smooth operation and protect the chamber hardware, please read this section carefully before running long or complex protocols.
+To ensure reliable operation and prevent damage to the chamber hardware, please review the following limitations and best practices before running long or complex protocols.
 
 Chamber Duration Limits
-For the longevity of the chambers, do not push experiments to the system’s absolute limits.
-Without using CSV import:  Maximum supported duration is 45 days (so 5 weeks).
-With CSV import: Limit runs to 5 days maximum. Longer CSV-driven protocols may become unstable or crash, depending on the total number of phase changes.
-Example: Around 300 phases within one lamp type may already trigger an error or crash
+The maximum supported duration for a single protocol is 45 days (approximately 5 weeks).
+This limit applies to both: Protocols loaded via the CSV tab, and Protocols configured directly in the interface (without CSV input).
+Although the system has been successfully tested for runs up to 100 days, 45 days is the officially supported and recommended limit for stable performance.
+
+CSV Button
+A time-resolution reduction method is used to only track changes in values, and count the seconds that a value stays constant. By accumulating these reduced-resolution seconds, the system can reliably handle long-duration protocols (e.g., 45 days), unlike the standard Fytotron implementation, which typically fails after 4 days when using a CSV file with per-second timing.
 
 Time Resolution
-All durations use the format DD.HH:MM:SS (Days.Hours:Minutes:Seconds).
-Both normal phase changes and CSV-driven data have second-level resolution.
+All durations follow the format:
+DD.HH:MM:SS (Days.Hours:Minutes:Seconds). So, the resolution is seconds.
 
-Getting Help
-If you encounter unexpected behavior or an error:
-Describe what you were doing and what happened (include any error message if possible).
-Send the details to Maarten Bots at maarten1.bots@wur.nl.
-If you are using the system and it fails to work properly, we can arrange a short troubleshooting meeting. 
-If everything works fine, you can safely ignore any confusing error messages.
 
 
 ## Disclaimer
