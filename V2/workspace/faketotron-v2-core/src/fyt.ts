@@ -9,7 +9,7 @@ import { encodeULEB128, decodeULEB128 } from "./uleb128";
 
 export type DecodedFYT = {
   protocol: Protocol;
-  header: Uint8Array;      // original 24-byte header (preserved for round-trip)
+  header: Uint8Array;      // original header (variable length; preserved for round-trip)
   jsonBytes: Uint8Array;   // exact JSON bytes (preserved for round-trip)
   description: string;     // trailer description ("" allowed)
 };
@@ -62,15 +62,15 @@ function normalizeClouds(obj: any): void {
 
 export function decodeFYT(bin: Uint8Array): DecodedFYT {
   if (bin.length < 24) throw new Error("FYT too small");
-  const header = bin.slice(0, 24);
+  // Determine JSON start by locating first '{'; header is everything before it
+  const { start, end } = findJsonSpan(bin);
+  const header = bin.slice(0, start);
 
   // Validate header magic: 0x11 + "Fytotron Protocol"
   const expected = new Uint8Array([0x11, ...toUtf8("Fytotron Protocol")]);
   for (let i = 0; i < expected.length; i++) {
     if (header[i] !== expected[i]) throw new Error("Invalid FYT header");
   }
-
-  const { start, end } = findJsonSpan(bin);
   const jsonBytes = bin.slice(start, end);
 
   // Skip CR/LF between JSON and trailer
@@ -122,20 +122,22 @@ export function encodeFYT(input: Protocol | DecodedFYT): Uint8Array {
     const text = pretty.split("\n").join("\r\n"); // CRLF, no extra newline added
     jsonBytes = toUtf8(text);
     description = trailerDesc;
-
-    // Build header and compute bytes 22..23 from (header + JSON) only
-    header = new Uint8Array(24);
-    const prefix = new Uint8Array([0x11, ...toUtf8("Fytotron Protocol")]);
+    // Build dynamic header (22-byte prefix + lo + LEB128(q-1))
+    const prefix = new Uint8Array([0x11, ...toUtf8("Fytotron Protocol"), 0x01, 0x00, 0x00, 0x00]);
+    const T = (24 + jsonBytes.length) + 104;
+    const lo = (T % 128) | 0x80;
+    let x = Math.floor(T / 128) - 1;
+    const hiBytes: number[] = [];
+    do {
+      let b = x & 0x7F;
+      x >>>= 7;
+      if (x > 0) b |= 0x80;
+      hiBytes.push(b);
+    } while (x > 0);
+    header = new Uint8Array(prefix.length + 1 + hiBytes.length);
     header.set(prefix, 0);
-    header[19] = 0x01; header[20] = 0x00; header[21] = 0x00;
-
-    const L = header.length + jsonBytes.length; // exclude trailer per spec
-    const T = L + 104;
-    const q = Math.floor(T / 128);
-    const hi = q - 1;
-    const lo = (T % 128) + 128;
-    header[22] = lo & 0xFF;
-    header[23] = hi & 0xFF;
+    header[prefix.length] = lo;
+    header.set(new Uint8Array(hiBytes), prefix.length + 1);
   }
 
   // Trailer bytes
