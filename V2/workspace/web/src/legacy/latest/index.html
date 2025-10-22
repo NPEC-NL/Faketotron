@@ -1088,22 +1088,41 @@ $('#phOK').onclick=()=>{const g=groups.find(x=>x.id===activeGroupId);if(!g)retur
  *   [Trailer]
  */
 
+// 22-byte fixed header prefix; bytes 22.. are dynamic per file length
 const FIXED_HEADER_PREFIX = [
   0x11,0x46,0x79,0x74,0x6f,0x74,0x72,0x6f,0x6e,0x20,0x50,0x72,0x6f,0x74,0x6f,0x63,
-  0x6f,0x6c,0x01,0x00,0x00,0x00,  // bytes 0..21 static
-  0x00,0x00                        // bytes 22..23 will be filled by formula
+  0x6f,0x6c,0x01,0x00,0x00,0x00   // bytes 0..21 static
 ];
 function encodeUTF8(str){return new TextEncoder().encode(str);}
 function formatJsonCRLF(obj){
   // CRLF, no trailing CRLF on last line, mirroring the python helper.
   return JSON.stringify(obj,null,2).split("\n").map((l,i,a)=> i<a.length-1? l+"\r\n" : l).join("");
 }
-function computeHeaderBytes(totalLen){
-  const T = totalLen + 104;
-  const q = Math.floor(T / 128);
-  const hi = q - 1;
-  const lo = (T % 128) + 128;
-  return [lo & 0xFF, hi & 0xFF];
+// Build dynamic header suiting both small and large FYT files.
+// Robot mapping:
+//   T = (24 + jsonLen) + 104
+//   header[22] = (T % 128) | 0x80
+//   x = floor(T/128) - 1
+//   Emit x as LEB128 (little-endian base-128): bytes 23.. with 0x80 set on all but last
+function buildHeaderForJsonLength(jsonLen){
+  const prefix = new Uint8Array(FIXED_HEADER_PREFIX);
+  const T = (24 + jsonLen) + 104;
+  const lo = (T % 128) | 0x80;
+  let x = Math.floor(T / 128) - 1; // non-negative
+  // LEB128 of x
+  const hiBytes = [];
+  do {
+    let b = x & 0x7F;
+    x >>>= 7;
+    if(x > 0) b |= 0x80;
+    hiBytes.push(b);
+  } while(x > 0);
+
+  const header = new Uint8Array(prefix.length + 1 + hiBytes.length);
+  header.set(prefix, 0);
+  header[prefix.length] = lo;
+  header.set(new Uint8Array(hiBytes), prefix.length + 1);
+  return header;
 }
 function downloadBytes(name, bytes){
   const blob=new Blob([bytes],{type:'application/octet-stream'});
@@ -1203,12 +1222,8 @@ function buildFytBinary(data){
   trailer.set(lenBytes, 0);
   trailer.set(descBytes, lenBytes.length);
 
-  // Header bytes 22–23 MUST NOT depend on description length.
-  // Compute them from header+JSON only.
-  const header = new Uint8Array(FIXED_HEADER_PREFIX); // 24 bytes template
-  const lenForHeader = header.length + jsonBytes.length; // exclude trailer
-  const [lo, hi] = computeHeaderBytes(lenForHeader);
-  header[22] = lo; header[23] = hi;
+  // Dynamic header must be computed from JSON length only (not trailer)
+  const header = buildHeaderForJsonLength(jsonBytes.length);
 
   // Final file = header + JSON + trailer (we still write the trailer bytes)
   const totalLen = header.length + jsonBytes.length + trailer.length;
@@ -1252,11 +1267,18 @@ function parseFytBytes(u8){
   for(let i=0;i<22;i++){
     if(u8[i] !== FIXED_HEADER_PREFIX[i]){ console.warn('Header prefix mismatch at', i); break; }
   }
-  const [lo, hi] = computeHeaderBytes(/* we can use u8.length or skip check */ u8.length);
-  if(u8[22]!== (lo&0xFF) || u8[23]!== (hi&0xFF)){ console.warn('Validation bytes differ.'); }
+  // Determine dynamic header length by reading header[22] and LEB128 at 23..
+  const lo = u8[22];
+  let idx = 23;
+  // Read until a byte without continuation bit
+  while(idx < u8.length){
+    const b = u8[idx++];
+    if((b & 0x80) === 0) break;
+  }
+  const headerLen = idx; // JSON starts here
 
-  // Body bytes
-  const body = u8.subarray(24);
+  // Body bytes start after dynamic header
+  const body = u8.subarray(headerLen);
 
   // Find last '}' byte (0x7d) to delimit JSON
   let jsonEnd = -1;
