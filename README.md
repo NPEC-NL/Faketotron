@@ -1,6 +1,24 @@
 # Faketotron
 a mock Fytotron Client protocol editor and viewer.
 
+## Limitations & Practical Recommendations
+To ensure smooth operation and protect the chamber hardware, please read this section carefully before running long or complex protocols.
+
+Chamber Duration Limits
+•	For the longevity of the chambers, do not push experiments to the system’s absolute limits.
+•	Without using CSV import:  Maximum supported duration is 45 days (so 5 weeks).
+•	With CSV import: Limit runs to 5 days maximum. Longer CSV-driven protocols may become unstable or crash, depending on the total number of phase changes.
+Example: Around 300 phases within one lamp type may already trigger an error or crash
+Time Resolution
+•	All durations use the format DD.HH:MM:SS (Days.Hours:Minutes:Seconds).
+•	Both normal phase changes and CSV-driven data have second-level resolution.
+Getting Help
+If you encounter unexpected behavior or an error:
+1.	Describe what you were doing and what happened (include any error message if possible).
+2.	Send the details to Maarten Bots at maarten1.bots@wur.nl.
+3.	If you are using the system and it fails to work properly, we can arrange a short troubleshooting meeting. If everything works fine, you can safely ignore any confusing error messages.
+
+
 ## Disclaimer
 
 This project is an independent, non-commercial imitation of certain features from the 
