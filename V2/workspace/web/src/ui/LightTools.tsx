@@ -162,6 +162,64 @@ const DEFAULT_PRESETS: Preset[] = [
     },
   },
 ];
+const PRESET_STORAGE_KEY = "ppfd.presets.v4";
+const PRESET_STORAGE_VERSION = 2;
+
+type PresetStoragePayload = {
+  version: number;
+  presets: Preset[];
+};
+
+function extractPresets(payload: unknown): Preset[] | undefined {
+  if (Array.isArray(payload)) {
+    return payload as Preset[];
+  }
+  if (payload && typeof payload === "object" && Array.isArray((payload as PresetStoragePayload).presets)) {
+    return (payload as PresetStoragePayload).presets;
+  }
+  return undefined;
+}
+
+function mergeWithDefaults(saved: Preset[] | undefined): Preset[] {
+  if (!saved?.length) {
+    return [...DEFAULT_PRESETS];
+  }
+
+  const seen = new Set<string>();
+  const merged: Preset[] = [];
+
+  for (const preset of DEFAULT_PRESETS) {
+    merged.push(preset);
+    seen.add(preset.name);
+  }
+
+  for (const preset of saved) {
+    if (seen.has(preset.name)) continue;
+    merged.push(preset);
+    seen.add(preset.name);
+  }
+
+  return merged;
+}
+
+function loadInitialPresets(): Preset[] {
+  if (typeof window === "undefined") {
+    return [...DEFAULT_PRESETS];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PRESET_STORAGE_KEY);
+    if (!raw) {
+      return [...DEFAULT_PRESETS];
+    }
+
+    const parsed = JSON.parse(raw);
+    return mergeWithDefaults(extractPresets(parsed));
+  } catch (error) {
+    console.warn("[LightTools] Failed to read stored presets", error);
+    return [...DEFAULT_PRESETS];
+  }
+}
 
 // ===== Helpers =====
 function clamp(x: number, lo = 0, hi = 100) {
@@ -172,18 +230,23 @@ function clamp(x: number, lo = 0, hi = 100) {
 
 // ===== Main component =====
 export default function LightTools() {
-  const [presets, setPresets] = useState<Preset[]>(() => {
-    const saved = localStorage.getItem("ppfd.presets.v4");
-    if (saved) return JSON.parse(saved);
-    // Use new default presets with separate PAR/Full spectrum entries
-    return DEFAULT_PRESETS;
-  });
+  const [presets, setPresets] = useState<Preset[]>(loadInitialPresets);
   useEffect(() => {
-    localStorage.setItem("ppfd.presets.v4", JSON.stringify(presets));
+    if (typeof window === "undefined") return;
+
+    const payload: PresetStoragePayload = {
+      version: PRESET_STORAGE_VERSION,
+      presets,
+    };
+    window.localStorage.setItem(PRESET_STORAGE_KEY, JSON.stringify(payload));
   }, [presets]);
 
   const [presetIndex, setPresetIndex] = useState(0);
-  const preset = presets[presetIndex];
+  const preset = presets[presetIndex] ?? presets[0];
+
+  if (!preset) {
+    return null;
+  }
 
   // Shelves now come directly from the selected preset
   const activeShelves = preset.shelves;
