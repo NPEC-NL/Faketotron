@@ -27,77 +27,221 @@ const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
 // Updated to show G4–G8 presets. 
 // and low-shift leakage. G4–G8 are single-shelf rooms using provided trendlines.
 const DEFAULT_PRESETS: Preset[] = [
-  // G4: preserve 1 shelf
+  // --- PAR PRESETS (added before PPFD presets) ---
   {
-    name: "G4",
+    name: "G4 PAR",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 9.882178162,  b: 12.9948859  },
+          deepRed:   { A: 1.068148947,  b: -2.143145002 },
+          farRed:    { A: 0.042586091,  b: 0.267684     },
+        },
+      },
+    },
+  },
+
+  {
+    name: "G5 PAR",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 8.681166555,  b: 13.98985898 },
+          deepRed:   { A: 0.550060964,  b: 0.621245324 },
+          farRed:    { A: 0.001097324,  b: 0.36870093  },
+        },
+      },
+    },
+  },
+
+  {
+    name: "G6 PAR",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 12.56678405,  b: -48.72777514 },
+          deepRed:   { A: 3.744073355,  b: -8.336413329 },
+          farRed:    { A: 0,            b: 0             },
+        },
+      },
+    },
+  },
+
+  {
+    name: "G7 PAR",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 6.694780888,  b: 12.43184897  },
+          deepRed:   { A: 0.616117746,  b: -0.079499064 },
+          farRed:    { A: 0.014972421,  b: 0.061250814  },
+        },
+      },
+    },
+  },
+
+  {
+    name: "G8 PAR",
+    profile: "Room",
+    shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 17.7940311,   b: 57.29996395  },
+          deepRed:   { A: 0.631567799,  b: 1.210504949  },
+          farRed:    { A: 0,            b: 0            },
+        },
+      },
+    },
+  },
+
+  // --- ORIGINAL PPFD PRESETS (unchanged below this line) ---
+  {
+    name: "G4 PPFD",
     profile: "Room",
     shelves: {
       single: {
         channels: {
           coolWhite: { A: 11.08, b: 14.57 },
-          deepRed: { A: 1.56, b: - 3.13 },
-          farRed: { A: 0.28, b: 1.76 },
+          deepRed:   { A: 1.56,  b: -3.13 },
+          farRed:    { A: 0.28,  b: 1.76  },
         },
       },
     },
   },
-  // G5
+
   {
-    name: "G5",
+    name: "G5 PPFD",
     profile: "Room",
     shelves: {
       single: {
         channels: {
           coolWhite: { A: 9.55, b: 15.39 },
-          deepRed: { A: 0.85, b: 0.96 },
-          farRed: { A: 0.01, b: 3.36 },
+          deepRed:   { A: 0.85, b: 0.96  },
+          farRed:    { A: 0.01, b: 3.36  },
         },
       },
     },
   },
-  // G6 (note: provided "Red" mapped to deepRed channel)
+
   {
-    name: "G6",
+    name: "G6 PPFD",
     profile: "Room",
     shelves: {
       single: {
         channels: {
           coolWhite: { A: 13.47, b: -52.23 },
-          deepRed: { A: 5.12, b: -11.4 },
-          farRed: { A: 0.08, b: 1.56 },
+          deepRed:   { A: 5.12,  b: -11.4  },
+          farRed:    { A: 0.08,  b: 1.56   },
         },
       },
     },
   },
-  // G7
+
   {
-    name: "G7",
+    name: "G7 PPFD",
     profile: "Room",
     shelves: {
       single: {
         channels: {
           coolWhite: { A: 7.27, b: 13.50 },
-          deepRed: { A: 0.93, b: -0.12 },
-          farRed: { A: 0.11, b: 0.45 },
+          deepRed:   { A: 0.93, b: -0.12 },
+          farRed:    { A: 0.11, b: 0.45  },
         },
       },
     },
   },
-  // G8
+
   {
-    name: "G8",
+    name: "G8 PPFD",
     profile: "Room",
     shelves: {
       single: {
         channels: {
           coolWhite: { A: 20.12, b: 64.79 },
-          deepRed: { A: 0.96, b: 1.84 },
-          farRed: { A: 0.71, b: 18.08 },
+          deepRed:   { A: 0.96,  b: 1.84  },
+          farRed:    { A: 0.71,  b: 18.08 },
         },
       },
     },
   },
 ];
+
+// const DEFAULT_PRESETS: Preset[] = [
+//   // G4: preserve 1 shelf
+//   {
+//     name: "G4 PPFD",
+//     profile: "Room",
+//     shelves: {
+//       single: {
+//         channels: {
+//           coolWhite: { A: 11.08, b: 14.57 },
+//           deepRed: { A: 1.56, b: - 3.13 },
+//           farRed: { A: 0.28, b: 1.76 },
+//         },
+//       },
+//     },
+//   },
+//   // G5
+//   {
+//     name: "G5 PPFD",
+//     profile: "Room",
+//     shelves: {
+//       single: {
+//         channels: {
+//           coolWhite: { A: 9.55, b: 15.39 },
+//           deepRed: { A: 0.85, b: 0.96 },
+//           farRed: { A: 0.01, b: 3.36 },
+//         },
+//       },
+//     },
+//   },
+//   // G6 (note: provided "Red" mapped to deepRed channel)
+//   {
+//     name: "G6 PPFD",
+//     profile: "Room",
+//     shelves: {
+//       single: {
+//         channels: {
+//           coolWhite: { A: 13.47, b: -52.23 },
+//           deepRed: { A: 5.12, b: -11.4 },
+//           farRed: { A: 0.08, b: 1.56 },
+//         },
+//       },
+//     },
+//   },
+//   // G7
+//   {
+//     name: "G7 PPFD",
+//     profile: "Room",
+//     shelves: {
+//       single: {
+//         channels: {
+//           coolWhite: { A: 7.27, b: 13.50 },
+//           deepRed: { A: 0.93, b: -0.12 },
+//           farRed: { A: 0.11, b: 0.45 },
+//         },
+//       },
+//     },
+//   },
+//   // G8
+//   {
+//     name: "G8 PPFD",
+//     profile: "Room",
+//     shelves: {
+//       single: {
+//         channels: {
+//           coolWhite: { A: 20.12, b: 64.79 },
+//           deepRed: { A: 0.96, b: 1.84 },
+//           farRed: { A: 0.71, b: 18.08 },
+//         },
+//       },
+//     },
+//   },
+// ];
 
 // ===== Helpers =====
 function clamp(x: number, lo = 0, hi = 100) {
