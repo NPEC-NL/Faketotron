@@ -1,3 +1,5 @@
+<img src="NPEC.png" alt="NPEC Logo" width="200"/>
+
 # Faketotron
 a mock Fytotron Client protocol editor and viewer.
 

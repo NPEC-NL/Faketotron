@@ -7,6 +7,7 @@ import CsvTab from "./CsvTab";
 import FytInspector from "./FytInspector";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
+import npecLogo from "../assets/NPEC.png";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
 type TabKey = "editor" | "graph" | "light" | "csv" | "inspector";
@@ -55,7 +56,7 @@ export default function App() {
     {TabBtn("csv", "CSV")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
           <div className="flex items-center gap-2 pl-3 border-l border-slate-300 ml-auto">
-            <img src="/NPEC.png" alt="NPEC logo" className="h-16 w-auto" />
+            <img src={npecLogo} alt="NPEC logo" className="h-16 w-auto" />
             <span className="font-semibold text-slate-700 text-xl tracking-wide">NPEC Faketron</span>
           </div>
       </div>
