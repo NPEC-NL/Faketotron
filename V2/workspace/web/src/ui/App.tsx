@@ -49,6 +49,10 @@ export default function App() {
   return (
     <div className="wrap">
       <div style={{ display: "flex", gap: 8, padding: 8, marginBottom: 12 }}>
+          <div className="flex items-center gap-2 pr-3 border-r border-slate-300">
+            <img src="/npec-logo.svg" alt="NPEC logo" className="h-10 w-auto" />
+            <span className="font-semibold text-slate-700 text-lg tracking-wide">NPEC Faketron</span>
+          </div>
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
