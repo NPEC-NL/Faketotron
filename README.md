@@ -141,7 +141,9 @@ To help you get started, the repository includes several ready-to-use example pr
 
 There are **standard Protocols for each room** which are very simple.
 
-There is the **G6 Example Protocol** (shown in `G6_24_hour_example.png`).
+### G6 24-Hour Example Protocol
+
+![G6 24-hour example protocol](G6_24_hour_example.png)
 
 A complete 24-hour G6 protocol is provided, illustrating:
 * Multi-channel light control with dynamic ramps
@@ -152,7 +154,8 @@ A complete 24-hour G6 protocol is provided, illustrating:
 This protocol can be loaded directly into the app to explore how phases, points, and value transitions are visualized.
 
 ### 🌈 45-Day "Crazy Protocol" (G4/G5/G8 Compatible)
-Shown in `G4,5,8_Crazy_45_days.png`.
+
+![45-day crazy protocol for G4, G5, G8](G4,5,8_Crazy_45_days.png)
 
 Also included is a long, high-resolution 45-day protocol, compatible with G4, G5, and G8 chambers.
 
