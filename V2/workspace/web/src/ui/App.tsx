@@ -49,15 +49,15 @@ export default function App() {
   return (
     <div className="wrap">
       <div style={{ display: "flex", gap: 8, padding: 8, marginBottom: 12 }}>
-          <div className="flex items-center gap-2 pr-3 border-r border-slate-300">
-            <img src="/NPEC.png" alt="NPEC logo" className="h-10 w-auto" />
-            <span className="font-semibold text-slate-700 text-lg tracking-wide">NPEC Faketron</span>
-          </div>
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
     {TabBtn("csv", "CSV")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
+          <div className="flex items-center gap-2 pl-3 border-l border-slate-300 ml-auto">
+            <img src="/NPEC.png" alt="NPEC logo" className="h-16 w-auto" />
+            <span className="font-semibold text-slate-700 text-xl tracking-wide">NPEC Faketron</span>
+          </div>
       </div>
 
       <div
