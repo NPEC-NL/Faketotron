@@ -1,3 +1,5 @@
+<img src="../NPEC.png" alt="NPEC Logo" width="200"/>
+
 # V2 Dev notes
 
 ## Wrapping customized V1 into V2
