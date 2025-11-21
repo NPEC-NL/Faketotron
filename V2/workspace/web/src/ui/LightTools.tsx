@@ -11,6 +11,7 @@ type Preset = {
   name: string;
   profile: string;
   shelves: Record<ShelfName, { channels: Record<ChannelName, ChannelParams> }>;
+  fullSpectrumShelves?: Record<ShelfName, { channels: Record<ChannelName, ChannelParams> }>;
 };
 
 type PercentRow  = { percent: number; value: number };
@@ -24,12 +25,10 @@ const CHANNEL_COLORS: Record<string, string> = {
 const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
 
 // ===== Default data (existing calibration) =====
-// Updated to show G4–G8 presets. 
-// and low-shift leakage. G4–G8 are single-shelf rooms using provided trendlines.
+// Updated to show G4–G8 presets with both PAR and Full spectrum calibrations.
 const DEFAULT_PRESETS: Preset[] = [
-  // --- PAR PRESETS (added before PPFD presets) ---
   {
-    name: "G4 PAR",
+    name: "G4",
     profile: "Room",
     shelves: {
       single: {
@@ -40,69 +39,7 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-  },
-
-  {
-    name: "G5 PAR",
-    profile: "Room",
-    shelves: {
-      single: {
-        channels: {
-          coolWhite: { A: 8.681166555,  b: 13.98985898 },
-          deepRed:   { A: 0.550060964,  b: 0.621245324 },
-          farRed:    { A: 0.001097324,  b: 0.36870093  },
-        },
-      },
-    },
-  },
-
-  {
-    name: "G6 PAR",
-    profile: "Room",
-    shelves: {
-      single: {
-        channels: {
-          coolWhite: { A: 12.56678405,  b: -48.72777514 },
-          deepRed:   { A: 3.744073355,  b: -8.336413329 },
-          farRed:    { A: 0,            b: 0             },
-        },
-      },
-    },
-  },
-
-  {
-    name: "G7 PAR",
-    profile: "Room",
-    shelves: {
-      single: {
-        channels: {
-          coolWhite: { A: 6.694780888,  b: 12.43184897  },
-          deepRed:   { A: 0.616117746,  b: -0.079499064 },
-          farRed:    { A: 0.014972421,  b: 0.061250814  },
-        },
-      },
-    },
-  },
-
-  {
-    name: "G8 PAR",
-    profile: "Room",
-    shelves: {
-      single: {
-        channels: {
-          coolWhite: { A: 17.7940311,   b: 57.29996395  },
-          deepRed:   { A: 0.631567799,  b: 1.210504949  },
-          farRed:    { A: 0,            b: 0            },
-        },
-      },
-    },
-  },
-
-  // --- ORIGINAL FULL SPECTRUM PRESETS (unchanged below this line) ---
-  {
-    name: "G4 Full spectrum",
-    profile: "Room",
-    shelves: {
+    fullSpectrumShelves: {
       single: {
         channels: {
           coolWhite: { A: 11.08, b: 14.57 },
@@ -114,9 +51,18 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G5 Full spectrum",
+    name: "G5",
     profile: "Room",
     shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 8.681166555,  b: 13.98985898 },
+          deepRed:   { A: 0.550060964,  b: 0.621245324 },
+          farRed:    { A: 0.001097324,  b: 0.36870093  },
+        },
+      },
+    },
+    fullSpectrumShelves: {
       single: {
         channels: {
           coolWhite: { A: 9.55, b: 15.39 },
@@ -128,9 +74,18 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G6 Full spectrum",
+    name: "G6",
     profile: "Room",
     shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 12.56678405,  b: -48.72777514 },
+          deepRed:   { A: 3.744073355,  b: -8.336413329 },
+          farRed:    { A: 0,            b: 0             },
+        },
+      },
+    },
+    fullSpectrumShelves: {
       single: {
         channels: {
           coolWhite: { A: 13.47, b: -52.23 },
@@ -142,9 +97,18 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G7 Full spectrum",
+    name: "G7",
     profile: "Room",
     shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 6.694780888,  b: 12.43184897  },
+          deepRed:   { A: 0.616117746,  b: -0.079499064 },
+          farRed:    { A: 0.014972421,  b: 0.061250814  },
+        },
+      },
+    },
+    fullSpectrumShelves: {
       single: {
         channels: {
           coolWhite: { A: 7.27, b: 13.50 },
@@ -156,9 +120,18 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G8 Full spectrum",
+    name: "G8",
     profile: "Room",
     shelves: {
+      single: {
+        channels: {
+          coolWhite: { A: 17.7940311,   b: 57.29996395  },
+          deepRed:   { A: 0.631567799,  b: 1.210504949  },
+          farRed:    { A: 0,            b: 0            },
+        },
+      },
+    },
+    fullSpectrumShelves: {
       single: {
         channels: {
           coolWhite: { A: 20.12, b: 64.79 },
@@ -193,12 +166,17 @@ export default function LightTools() {
   const [presetIndex, setPresetIndex] = useState(0);
   const preset = presets[presetIndex];
 
-  // Determine measurement type from preset name
-  const measurementType = preset.name.includes('PAR') ? 'PAR' : 'Full spectrum';
+  // State to toggle between PAR and Full spectrum
+  const [measurementType, setMeasurementType] = useState<'PAR' | 'Full spectrum'>('PAR');
+
+  // Get the appropriate shelves based on measurement type
+  const activeShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+    ? preset.fullSpectrumShelves 
+    : preset.shelves;
 
   // Channels come from the first shelf of the selected preset (simplified)
-  const firstShelfKey = Object.keys(preset.shelves)[0] || "";
-  const allChannels = Object.keys(preset.shelves[firstShelfKey]?.channels ?? {});
+  const firstShelfKey = Object.keys(activeShelves)[0] || "";
+  const allChannels = Object.keys(activeShelves[firstShelfKey]?.channels ?? {});
 
   // per-channel percents (0..100)
   const [perChannelPercent, setPerChannelPercent] = useState<Record<ChannelName, number>>({});
@@ -213,7 +191,7 @@ export default function LightTools() {
 
   // Channel params from the first shelf
   function paramsFor(channel: ChannelName): ChannelParams {
-    return preset.shelves[firstShelfKey]?.channels[channel] ?? { A: 1, b: 0 };
+    return activeShelves[firstShelfKey]?.channels[channel] ?? { A: 1, b: 0 };
   }
 
   function onChangePreset(idx: number) {
@@ -323,8 +301,36 @@ export default function LightTools() {
             ))}
           </select>
         </div>
+        
+        {/* Measurement Type Toggle */}
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Measurement Type</label>
+          <div className="flex gap-2">
+            <button
+              className={`flex-1 px-4 py-2 text-sm rounded border transition-colors ${
+                measurementType === 'PAR'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }`}
+              onClick={() => setMeasurementType('PAR')}
+            >
+              PAR (400–700 nm)
+            </button>
+            <button
+              className={`flex-1 px-4 py-2 text-sm rounded border transition-colors ${
+                measurementType === 'Full spectrum'
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+              }`}
+              onClick={() => setMeasurementType('Full spectrum')}
+            >
+              Full spectrum (300–900 nm)
+            </button>
+          </div>
+        </div>
+        
         {/* Per-channel sliders */}
-        <div className="space-y-2 md:col-span-2">
+        <div className="space-y-2 md:col-span-3 lg:col-span-1">
           <label className="block text-sm font-medium">Channel intensities (%)</label>
           {allChannels.length === 0 ? (
             <div className="text-sm text-slate-500">No channels available for this preset.</div>
