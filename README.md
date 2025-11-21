@@ -136,6 +136,39 @@ The **CSV Tab** lets you import simple CSV files and convert them into protocol 
 3. Inspect results in table and JSON views.
 4. Export or apply directly into the protocol.
 
+## Example Protocols
+To help you get started, the repository includes several ready-to-use example protocols. These demonstrate how complex or long-running light/temperature programs can be represented inside the tool.
+
+There are **standard Protocols for each room** which are very simple.
+
+There is the **G6 Example Protocol** (shown in `G6_24_hour_example.png`).
+
+A complete 24-hour G6 protocol is provided, illustrating:
+* Multi-channel light control with dynamic ramps
+* The FluroCam of G6 also has minute level resolution so in principle it can be matched with this protocol.
+* Temperature and Cool white can be loaded in
+* Clean daily cycling behaviour
+
+This protocol can be loaded directly into the app to explore how phases, points, and value transitions are visualized.
+
+### 🌈 45-Day "Crazy Protocol" (G4/G5/G8 Compatible)
+Shown in `G4,5,8_Crazy_45_days.png`.
+
+Also included is a long, high-resolution 45-day protocol, compatible with G4, G5, and G8 chambers.
+
+This file demonstrates:
+* Large-scale protocol handling
+* Long-term schedules (over 1000+ hours)
+* Repeating high-frequency Cool White pulses from CSV
+* Multi-week temperature oscillations
+
+**Where to Find Them:**  
+[Standard Protocols folder](https://github.com/NPEC-NL/Faketotron/tree/NPEC-WU/Standard%20Protocols)
+
+You can load them via:
+1. Download and load them into the Faketron
+2. Or import the CSV via the CSV tool in the Faketron
+
 ## Important Notes:
 - **Time format:** HH:MM:SS for no more than 24 hours. **D.HH:MM:SS for over 24 hours.** For example, 01:30:00 for 1.5 hrs, and 1.06:00:00 for 30 hours (**note: use 1.00:00:00 for 24 hrs**)
 - For the CSV tools it is in seconds
