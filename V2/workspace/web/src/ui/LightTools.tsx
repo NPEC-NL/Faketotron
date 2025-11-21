@@ -170,13 +170,15 @@ export default function LightTools() {
   const [measurementType, setMeasurementType] = useState<'PAR' | 'Full spectrum'>('PAR');
 
   // Get the appropriate shelves based on measurement type
-  const activeShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-    ? preset.fullSpectrumShelves 
-    : preset.shelves;
+  const activeShelves = useMemo(() => {
+    return measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+  }, [measurementType, preset]);
 
   // Channels come from the first shelf of the selected preset (simplified)
-  const firstShelfKey = Object.keys(activeShelves)[0] || "";
-  const allChannels = Object.keys(activeShelves[firstShelfKey]?.channels ?? {});
+  const firstShelfKey = useMemo(() => Object.keys(activeShelves)[0] || "", [activeShelves]);
+  const allChannels = useMemo(() => Object.keys(activeShelves[firstShelfKey]?.channels ?? {}), [activeShelves, firstShelfKey]);
 
   // per-channel percents (0..100)
   const [perChannelPercent, setPerChannelPercent] = useState<Record<ChannelName, number>>({});
@@ -187,7 +189,7 @@ export default function LightTools() {
     for (const ch of allChannels) init[ch] = 50;
     setPerChannelPercent(init);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetIndex, firstShelfKey]);
+  }, [presetIndex, firstShelfKey, measurementType]);
 
   // Channel params from the first shelf
   function paramsFor(channel: ChannelName): ChannelParams {
