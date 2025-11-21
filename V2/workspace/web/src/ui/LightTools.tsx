@@ -98,9 +98,9 @@ const DEFAULT_PRESETS: Preset[] = [
     },
   },
 
-  // --- ORIGINAL PPFD PRESETS (unchanged below this line) ---
+  // --- ORIGINAL FULL SPECTRUM PRESETS (unchanged below this line) ---
   {
-    name: "G4 PPFD",
+    name: "G4 Full spectrum",
     profile: "Room",
     shelves: {
       single: {
@@ -114,7 +114,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G5 PPFD",
+    name: "G5 Full spectrum",
     profile: "Room",
     shelves: {
       single: {
@@ -128,7 +128,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G6 PPFD",
+    name: "G6 Full spectrum",
     profile: "Room",
     shelves: {
       single: {
@@ -142,7 +142,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G7 PPFD",
+    name: "G7 Full spectrum",
     profile: "Room",
     shelves: {
       single: {
@@ -156,7 +156,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G8 PPFD",
+    name: "G8 Full spectrum",
     profile: "Room",
     shelves: {
       single: {
@@ -169,79 +169,6 @@ const DEFAULT_PRESETS: Preset[] = [
     },
   },
 ];
-
-// const DEFAULT_PRESETS: Preset[] = [
-//   // G4: preserve 1 shelf
-//   {
-//     name: "G4 PPFD",
-//     profile: "Room",
-//     shelves: {
-//       single: {
-//         channels: {
-//           coolWhite: { A: 11.08, b: 14.57 },
-//           deepRed: { A: 1.56, b: - 3.13 },
-//           farRed: { A: 0.28, b: 1.76 },
-//         },
-//       },
-//     },
-//   },
-//   // G5
-//   {
-//     name: "G5 PPFD",
-//     profile: "Room",
-//     shelves: {
-//       single: {
-//         channels: {
-//           coolWhite: { A: 9.55, b: 15.39 },
-//           deepRed: { A: 0.85, b: 0.96 },
-//           farRed: { A: 0.01, b: 3.36 },
-//         },
-//       },
-//     },
-//   },
-//   // G6 (note: provided "Red" mapped to deepRed channel)
-//   {
-//     name: "G6 PPFD",
-//     profile: "Room",
-//     shelves: {
-//       single: {
-//         channels: {
-//           coolWhite: { A: 13.47, b: -52.23 },
-//           deepRed: { A: 5.12, b: -11.4 },
-//           farRed: { A: 0.08, b: 1.56 },
-//         },
-//       },
-//     },
-//   },
-//   // G7
-//   {
-//     name: "G7 PPFD",
-//     profile: "Room",
-//     shelves: {
-//       single: {
-//         channels: {
-//           coolWhite: { A: 7.27, b: 13.50 },
-//           deepRed: { A: 0.93, b: -0.12 },
-//           farRed: { A: 0.11, b: 0.45 },
-//         },
-//       },
-//     },
-//   },
-//   // G8
-//   {
-//     name: "G8 PPFD",
-//     profile: "Room",
-//     shelves: {
-//       single: {
-//         channels: {
-//           coolWhite: { A: 20.12, b: 64.79 },
-//           deepRed: { A: 0.96, b: 1.84 },
-//           farRed: { A: 0.71, b: 18.08 },
-//         },
-//       },
-//     },
-//   },
-// ];
 
 // ===== Helpers =====
 function clamp(x: number, lo = 0, hi = 100) {
@@ -265,6 +192,9 @@ export default function LightTools() {
 
   const [presetIndex, setPresetIndex] = useState(0);
   const preset = presets[presetIndex];
+
+  // Determine measurement type from preset name
+  const measurementType = preset.name.includes('PAR') ? 'PAR' : 'Full spectrum';
 
   // Channels come from the first shelf of the selected preset (simplified)
   const firstShelfKey = Object.keys(preset.shelves)[0] || "";
@@ -346,8 +276,35 @@ export default function LightTools() {
   // ===== Render =====
   return (
     <div className="space-y-5">
-      <div className="text-l text-slate-1000">
-        <b>Important Note: </b> The PPFD to device % conversion is calculated based on linear regression with measured parameters, and thus should only be considered as a reference rather than the precise actual value!
+      {/* PAR vs Full Spectrum Explanation */}
+      <div className="border border-blue-300 bg-blue-50 rounded-lg p-4 space-y-3">
+        <h3 className="font-semibold text-lg text-blue-900">PAR vs Full Spectrum (Short Explanation)</h3>
+        
+        <div className="space-y-2">
+          <div>
+            <h4 className="font-semibold text-blue-800">PAR (400–700 nm)</h4>
+            <p className="text-sm text-slate-700">
+              <strong>Unit:</strong> µmol/m²/s<br />
+              This is the wavelength range used for photosynthesis.
+            </p>
+          </div>
+          
+          <div>
+            <h4 className="font-semibold text-blue-800">Full Spectrum (300–900 nm)</h4>
+            <p className="text-sm text-slate-700">
+              <strong>Unit:</strong> µmol/m²/s
+            </p>
+          </div>
+        </div>
+        
+        <div className="text-sm text-slate-700 border-t border-blue-200 pt-3">
+          <p className="mb-2">
+            The displayed values are <strong>estimates based on trend-line calculations</strong>. For precise measurements, a spectrometer is required for your exact fixture settings.
+          </p>
+          <p>
+            Sometimes far-red appears as 0 in PAR: not because the spectrometer failed to measure it, but because its output is extremely small compared to the much stronger cool-white and deep-red components within the PAR range.
+          </p>
+        </div>
       </div>
 
       {/* Controls */}
@@ -390,7 +347,7 @@ export default function LightTools() {
                       value={pct}
                       onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPerChannelPercent((prev: Record<ChannelName, number>) => ({ ...prev, [ch]: clamp(parseFloat(e.target.value || '0')) }))}
                       className="w-20 border rounded p-1 text-sm" />
-                    <span className="text-sm text-slate-600">% → PPFD ≈ <b>{ppfd.toFixed(2)}</b></span>
+                    <span className="text-sm text-slate-600">% → {measurementType} ≈ <b>{ppfd.toFixed(2)}</b></span>
                   </div>
                 );
               })}
@@ -398,11 +355,11 @@ export default function LightTools() {
           )}
         </div>
       </div>
-      <div className="text-sm mt-2">Total PPFD (current) ≈ <b>{totalPPFD.toFixed(2)}</b> µmol/m²/s</div>
+      <div className="text-sm mt-2">Total {measurementType} (current) ≈ <b>{totalPPFD.toFixed(2)}</b> µmol/m²/s</div>
 
       {/* Simplified plot: X = PPFD (µmol/m²/s), Y = device % */}
       <div className="border rounded-lg p-3 mt-4">
-        <div className="font-medium">PPFD map (X = µmol/m²/s, Y = %)</div>
+        <div className="font-medium">{measurementType} map (X = µmol/m²/s, Y = %)</div>
         {allChannels.length === 0 ? (
           <div className="text-sm text-slate-500 mt-3">No channels to plot.</div>
         ) : (
@@ -427,7 +384,7 @@ export default function LightTools() {
                 />
                 <XAxis dataKey="value" type="number" tickFormatter={(v) => `${v}`} label={{ value: "µmol/m²/s", position: "insideBottomRight", offset: -5 }} />
                 <YAxis dataKey="percent" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <Tooltip formatter={(v: any, n: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? 'PPFD' : 'Percent']} labelFormatter={(l) => `PPFD: ${l}`} />
+                <Tooltip formatter={(v: any, n: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? measurementType : 'Percent']} labelFormatter={(l) => `${measurementType}: ${l}`} />
                 {/* Per-channel dashed curves */}
                 {percentSeries.map((s) => (
                   <Line
@@ -478,7 +435,7 @@ export default function LightTools() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis label={{ value: "µmol/m²/s", angle: -90, position: "insideLeft" }} />
-                <Tooltip formatter={(v: any) => [`${(v as number).toFixed(2)} µmol/m²/s`, "PPFD"]} />
+                <Tooltip formatter={(v: any) => [`${(v as number).toFixed(2)} µmol/m²/s`, measurementType]} />
                 <Bar dataKey="ppfd">
                   {spectrumBars.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={entry.color} />
