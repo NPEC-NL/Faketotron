@@ -25,10 +25,10 @@ const CHANNEL_COLORS: Record<string, string> = {
 const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
 
 // ===== Default data (existing calibration) =====
-// Updated to show G4–G8 presets with both PAR and Full spectrum calibrations.
+// Each room now has separate PAR and Full spectrum entries in the dropdown
 const DEFAULT_PRESETS: Preset[] = [
   {
-    name: "G4",
+    name: "G4 PAR (400–700 nm)",
     profile: "Room",
     shelves: {
       single: {
@@ -39,7 +39,11 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-    fullSpectrumShelves: {
+  },
+  {
+    name: "G4 Full spectrum (300–900 nm)",
+    profile: "Room",
+    shelves: {
       single: {
         channels: {
           coolWhite: { A: 11.08, b: 14.57 },
@@ -51,7 +55,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G5",
+    name: "G5 PAR (400–700 nm)",
     profile: "Room",
     shelves: {
       single: {
@@ -62,7 +66,11 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-    fullSpectrumShelves: {
+  },
+  {
+    name: "G5 Full spectrum (300–900 nm)",
+    profile: "Room",
+    shelves: {
       single: {
         channels: {
           coolWhite: { A: 9.55, b: 15.39 },
@@ -74,7 +82,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G6",
+    name: "G6 PAR (400–700 nm)",
     profile: "Room",
     shelves: {
       single: {
@@ -85,7 +93,11 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-    fullSpectrumShelves: {
+  },
+  {
+    name: "G6 Full spectrum (300–900 nm)",
+    profile: "Room",
+    shelves: {
       single: {
         channels: {
           coolWhite: { A: 13.47, b: -52.23 },
@@ -97,7 +109,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G7",
+    name: "G7 PAR (400–700 nm)",
     profile: "Room",
     shelves: {
       single: {
@@ -108,7 +120,11 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-    fullSpectrumShelves: {
+  },
+  {
+    name: "G7 Full spectrum (300–900 nm)",
+    profile: "Room",
+    shelves: {
       single: {
         channels: {
           coolWhite: { A: 7.27, b: 13.50 },
@@ -120,7 +136,7 @@ const DEFAULT_PRESETS: Preset[] = [
   },
 
   {
-    name: "G8",
+    name: "G8 PAR (400–700 nm)",
     profile: "Room",
     shelves: {
       single: {
@@ -131,7 +147,11 @@ const DEFAULT_PRESETS: Preset[] = [
         },
       },
     },
-    fullSpectrumShelves: {
+  },
+  {
+    name: "G8 Full spectrum (300–900 nm)",
+    profile: "Room",
+    shelves: {
       single: {
         channels: {
           coolWhite: { A: 20.12, b: 64.79 },
@@ -166,19 +186,12 @@ export default function LightTools() {
   const [presetIndex, setPresetIndex] = useState(0);
   const preset = presets[presetIndex];
 
-  // State to toggle between PAR and Full spectrum
-  const [measurementType, setMeasurementType] = useState<'PAR' | 'Full spectrum'>('PAR');
-
-  // Get the appropriate shelves based on measurement type
-  const activeShelves = useMemo(() => {
-    return measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-  }, [measurementType, preset]);
+  // Shelves now come directly from the selected preset
+  const activeShelves = preset.shelves;
 
   // Channels come from the first shelf of the selected preset (simplified)
-  const firstShelfKey = useMemo(() => Object.keys(activeShelves)[0] || "", [activeShelves]);
-  const allChannels = useMemo(() => Object.keys(activeShelves[firstShelfKey]?.channels ?? {}), [activeShelves, firstShelfKey]);
+  const firstShelfKey = Object.keys(activeShelves)[0] || "";
+  const allChannels = Object.keys(activeShelves[firstShelfKey]?.channels ?? {});
 
   // per-channel percents (0..100)
   const [perChannelPercent, setPerChannelPercent] = useState<Record<ChannelName, number>>({});
@@ -189,7 +202,7 @@ export default function LightTools() {
     for (const ch of allChannels) init[ch] = 50;
     setPerChannelPercent(init);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetIndex, firstShelfKey, measurementType]);
+  }, [presetIndex, firstShelfKey]);
 
   // Channel params from the first shelf
   function paramsFor(channel: ChannelName): ChannelParams {
@@ -200,93 +213,61 @@ export default function LightTools() {
     setPresetIndex(idx);
   }
 
+  // Determine measurement type from preset name
+  const measurementType = preset.name.includes('Full spectrum') ? 'Full spectrum' : 'PAR';
+
   // ===== New: PPFD vs device % chart data =====
   // Build per-channel PPFD curves using calibration PPFD(%) = A * % + b
   const percentSeries = useMemo(() => {
-    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-    const shelfKey = Object.keys(currentShelves)[0] || "";
-    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
-    
     const series = [] as { name: string; data: PercentRow[] }[];
     const steps = Array.from({ length: 101 }, (_, i) => i); // 0..100 inclusive
-    for (const ch of channels) {
-      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-      const { A, b } = params;
+    for (const ch of allChannels) {
+      const { A, b } = paramsFor(ch);
       const data: PercentRow[] = steps.map((p) => ({ percent: p, value: A * p + b }));
       series.push({ name: ch, data });
     }
     return series;
-  }, [preset, measurementType]);
+  }, [preset]);
 
   // Total PPFD curve = sum of all active channels at each %
   const totalPercentData: PercentRow[] = useMemo(() => {
-    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-    const shelfKey = Object.keys(currentShelves)[0] || "";
-    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
-    
     const steps = Array.from({ length: 101 }, (_, i) => i);
     return steps.map((p) => {
       let sum = 0;
-      for (const ch of channels) {
-        const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-        const { A, b } = params;
+      for (const ch of allChannels) {
+        const { A, b } = paramsFor(ch);
         sum += A * p + b;
       }
       return { percent: p, value: sum };
     });
-  }, [preset, measurementType]);
+  }, [preset]);
 
   // Current selection points (one per channel) to show on the graph
   const currentPoints = useMemo(() => {
-    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-    const shelfKey = Object.keys(currentShelves)[0] || "";
-    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
-    
-    return channels.map((ch) => {
-      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-      const { A, b } = params;
+    return allChannels.map((ch) => {
+      const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, data: [{ percent: pct, value: A * pct + b }] };
     });
-  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
+  }, [preset, JSON.stringify(perChannelPercent)]);
 
   // total PPFD at current slider positions
   const totalPPFD = useMemo(() => {
-    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-    const shelfKey = Object.keys(currentShelves)[0] || "";
-    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
-    
-    return channels.reduce((sum, ch) => {
-      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-      const { A, b } = params;
+    return allChannels.reduce((sum, ch) => {
+      const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
       return sum + (A * pct + b);
     }, 0);
-  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
+  }, [preset, JSON.stringify(perChannelPercent)]);
 
   // Spectrum-like contributions (simple): per-channel PPFD bars
   const spectrumBars = useMemo(() => {
-    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-      ? preset.fullSpectrumShelves 
-      : preset.shelves;
-    const shelfKey = Object.keys(currentShelves)[0] || "";
-    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
-    
-    return channels.map((ch) => {
-      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-      const { A, b } = params;
+    return allChannels.map((ch) => {
+      const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, ppfd: A * pct + b, color: colorFor(ch) };
     });
-  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
+  }, [preset, JSON.stringify(perChannelPercent)]);
 
   // ===== Render =====
   return (
@@ -323,9 +304,9 @@ export default function LightTools() {
       </div>
 
       {/* Controls */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
-          <label className="block text-sm font-medium">Room</label>
+          <label className="block text-sm font-medium">Room & Measurement Type</label>
           <select
             className="border rounded p-2 text-sm w-full"
             value={presetIndex}
@@ -333,41 +314,14 @@ export default function LightTools() {
           >
             {presets.map((p: Preset, i: number) => (
               <option key={i} value={i}>
-                {p.name} ({p.profile})
+                {p.name}
               </option>
             ))}
           </select>
         </div>
         
-        {/* Measurement Type Toggle */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Measurement Type</label>
-          <div className="flex gap-2">
-            <button
-              className={`flex-1 px-4 py-2 text-sm rounded border transition-colors ${
-                measurementType === 'PAR'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-              }`}
-              onClick={() => setMeasurementType('PAR')}
-            >
-              PAR (400–700 nm)
-            </button>
-            <button
-              className={`flex-1 px-4 py-2 text-sm rounded border transition-colors ${
-                measurementType === 'Full spectrum'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
-              }`}
-              onClick={() => setMeasurementType('Full spectrum')}
-            >
-              Full spectrum (300–900 nm)
-            </button>
-          </div>
-        </div>
-        
         {/* Per-channel sliders */}
-        <div className="space-y-2 md:col-span-3 lg:col-span-1">
+        <div className="space-y-2 md:col-span-2">
           <label className="block text-sm font-medium">Channel intensities (%)</label>
           {allChannels.length === 0 ? (
             <div className="text-sm text-slate-500">No channels available for this preset.</div>
@@ -375,11 +329,7 @@ export default function LightTools() {
             <div className="space-y-3">
               {allChannels.map((ch) => {
                 const pct = perChannelPercent[ch] ?? 50;
-                const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
-                  ? preset.fullSpectrumShelves 
-                  : preset.shelves;
-                const params = currentShelves[firstShelfKey]?.channels[ch] ?? { A: 1, b: 0 };
-                const { A, b } = params;
+                const { A, b } = paramsFor(ch);
                 const ppfd = A * pct + b;
                 return (
                   <div key={ch} className="flex items-center gap-3">
