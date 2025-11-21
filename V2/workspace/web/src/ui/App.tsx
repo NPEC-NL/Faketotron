@@ -55,9 +55,9 @@ export default function App() {
         {TabBtn("light", "Light Tools")}
     {TabBtn("csv", "CSV")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
-          <div className="flex items-center gap-2 pl-3 border-l border-slate-300 ml-auto">
-            <img src={npecLogo} alt="NPEC logo" className="h-16 w-auto" />
-            <span className="font-semibold text-slate-700 text-xl tracking-wide">NPEC Faketron</span>
+          <div className="flex items-center gap-3 pl-3 border-l border-slate-300 ml-auto">
+            <img src={npecLogo} alt="NPEC logo" className="h-24 w-auto" />
+            <span className="font-semibold text-slate-700 text-2xl tracking-wide">NPEC Faketron</span>
           </div>
       </div>
 
