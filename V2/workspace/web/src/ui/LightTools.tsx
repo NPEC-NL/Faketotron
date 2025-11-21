@@ -173,14 +173,13 @@ function clamp(x: number, lo = 0, hi = 100) {
 // ===== Main component =====
 export default function LightTools() {
   const [presets, setPresets] = useState<Preset[]>(() => {
-    const saved = localStorage.getItem("ppfd.presets.v3");
+    const saved = localStorage.getItem("ppfd.presets.v4");
     if (saved) return JSON.parse(saved);
-    // migrate v2 if exists
-    const v2 = localStorage.getItem("ppfd.presets.v2");
-    return v2 ? JSON.parse(v2) : DEFAULT_PRESETS;
+    // Use new default presets with separate PAR/Full spectrum entries
+    return DEFAULT_PRESETS;
   });
   useEffect(() => {
-    localStorage.setItem("ppfd.presets.v3", JSON.stringify(presets));
+    localStorage.setItem("ppfd.presets.v4", JSON.stringify(presets));
   }, [presets]);
 
   const [presetIndex, setPresetIndex] = useState(0);
