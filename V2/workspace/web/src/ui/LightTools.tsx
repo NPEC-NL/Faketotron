@@ -209,7 +209,7 @@ export default function LightTools() {
       series.push({ name: ch, data });
     }
     return series;
-  }, [allChannels.join("|"), presetIndex]);
+  }, [allChannels.join("|"), presetIndex, measurementType]);
 
   // Total PPFD curve = sum of all active channels at each %
   const totalPercentData: PercentRow[] = useMemo(() => {
@@ -222,7 +222,7 @@ export default function LightTools() {
       }
       return { percent: p, value: sum };
     });
-  }, [allChannels.join("|"), presetIndex]);
+  }, [allChannels.join("|"), presetIndex, measurementType]);
 
   // Current selection points (one per channel) to show on the graph
   const currentPoints = useMemo(() => {
@@ -231,7 +231,7 @@ export default function LightTools() {
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, data: [{ percent: pct, value: A * pct + b }] };
     });
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
+  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
 
   // total PPFD at current slider positions
   const totalPPFD = useMemo(() => {
@@ -240,7 +240,7 @@ export default function LightTools() {
       const pct = perChannelPercent[ch] ?? 50;
       return sum + (A * pct + b);
     }, 0);
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
+  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
 
   // Spectrum-like contributions (simple): per-channel PPFD bars
   const spectrumBars = useMemo(() => {
@@ -249,7 +249,7 @@ export default function LightTools() {
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, ppfd: A * pct + b, color: colorFor(ch) };
     });
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex]);
+  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
 
   // ===== Render =====
   return (
