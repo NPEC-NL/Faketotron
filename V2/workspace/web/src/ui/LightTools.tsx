@@ -362,6 +362,22 @@ export default function LightTools() {
           <p>
             Sometimes far-red appears as 0 in PAR: not because the spectrometer failed to measure it, but because its output is extremely small compared to the much stronger cool-white and deep-red components within the PAR range.
           </p>
+          <div className="mt-3 space-y-1">
+            <h4 className="font-semibold text-blue-800">More Posters &amp; Raw Spectra</h4>
+            <p>
+              For additional posters hanging in the NPEC building, including raw spectral data and calculated ratios B(400–500):R(600–700) and R(655–665):FR(725–735), you can visit the shared folder
+              {" "}
+              <a
+                href="https://drive.google.com/drive/folders/1xWC8XHK52TAQp51PZiaLiuDlUalp0QaL?usp=sharing"
+                target="_blank"
+                rel="noreferrer"
+                className="text-blue-700 underline"
+              >
+                here
+              </a>
+              .
+            </p>
+          </div>
         </div>
       </div>
 
