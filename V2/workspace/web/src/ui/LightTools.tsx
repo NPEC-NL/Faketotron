@@ -201,55 +201,90 @@ export default function LightTools() {
   // ===== New: PPFD vs device % chart data =====
   // Build per-channel PPFD curves using calibration PPFD(%) = A * % + b
   const percentSeries = useMemo(() => {
+    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+    const shelfKey = Object.keys(currentShelves)[0] || "";
+    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
+    
     const series = [] as { name: string; data: PercentRow[] }[];
     const steps = Array.from({ length: 101 }, (_, i) => i); // 0..100 inclusive
-    for (const ch of allChannels) {
-      const { A, b } = paramsFor(ch);
+    for (const ch of channels) {
+      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+      const { A, b } = params;
       const data: PercentRow[] = steps.map((p) => ({ percent: p, value: A * p + b }));
       series.push({ name: ch, data });
     }
     return series;
-  }, [allChannels.join("|"), presetIndex, measurementType]);
+  }, [preset, measurementType]);
 
   // Total PPFD curve = sum of all active channels at each %
   const totalPercentData: PercentRow[] = useMemo(() => {
+    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+    const shelfKey = Object.keys(currentShelves)[0] || "";
+    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
+    
     const steps = Array.from({ length: 101 }, (_, i) => i);
     return steps.map((p) => {
       let sum = 0;
-      for (const ch of allChannels) {
-        const { A, b } = paramsFor(ch);
+      for (const ch of channels) {
+        const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+        const { A, b } = params;
         sum += A * p + b;
       }
       return { percent: p, value: sum };
     });
-  }, [allChannels.join("|"), presetIndex, measurementType]);
+  }, [preset, measurementType]);
 
   // Current selection points (one per channel) to show on the graph
   const currentPoints = useMemo(() => {
-    return allChannels.map((ch) => {
-      const { A, b } = paramsFor(ch);
+    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+    const shelfKey = Object.keys(currentShelves)[0] || "";
+    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
+    
+    return channels.map((ch) => {
+      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+      const { A, b } = params;
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, data: [{ percent: pct, value: A * pct + b }] };
     });
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
+  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
 
   // total PPFD at current slider positions
   const totalPPFD = useMemo(() => {
-    return allChannels.reduce((sum, ch) => {
-      const { A, b } = paramsFor(ch);
+    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+    const shelfKey = Object.keys(currentShelves)[0] || "";
+    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
+    
+    return channels.reduce((sum, ch) => {
+      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+      const { A, b } = params;
       const pct = perChannelPercent[ch] ?? 50;
       return sum + (A * pct + b);
     }, 0);
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
+  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
 
   // Spectrum-like contributions (simple): per-channel PPFD bars
   const spectrumBars = useMemo(() => {
-    return allChannels.map((ch) => {
-      const { A, b } = paramsFor(ch);
+    const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+      ? preset.fullSpectrumShelves 
+      : preset.shelves;
+    const shelfKey = Object.keys(currentShelves)[0] || "";
+    const channels = Object.keys(currentShelves[shelfKey]?.channels ?? {});
+    
+    return channels.map((ch) => {
+      const params = currentShelves[shelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+      const { A, b } = params;
       const pct = perChannelPercent[ch] ?? 50;
       return { name: ch, ppfd: A * pct + b, color: colorFor(ch) };
     });
-  }, [allChannels.join("|"), JSON.stringify(perChannelPercent), presetIndex, measurementType]);
+  }, [preset, measurementType, JSON.stringify(perChannelPercent)]);
 
   // ===== Render =====
   return (
@@ -338,7 +373,11 @@ export default function LightTools() {
             <div className="space-y-3">
               {allChannels.map((ch) => {
                 const pct = perChannelPercent[ch] ?? 50;
-                const { A, b } = paramsFor(ch);
+                const currentShelves = measurementType === 'Full spectrum' && preset.fullSpectrumShelves 
+                  ? preset.fullSpectrumShelves 
+                  : preset.shelves;
+                const params = currentShelves[firstShelfKey]?.channels[ch] ?? { A: 1, b: 0 };
+                const { A, b } = params;
                 const ppfd = A * pct + b;
                 return (
                   <div key={ch} className="flex items-center gap-3">
