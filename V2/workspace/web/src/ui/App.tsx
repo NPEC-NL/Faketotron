@@ -52,7 +52,8 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
-        {/* Hidden before finish {TabBtn("metadata", "Metadata")} */}
+        {/* Hidden before finish  */}
+        {TabBtn("metadata", "Metadata")}
         
       </div>
 

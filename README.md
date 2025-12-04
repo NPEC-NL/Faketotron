@@ -86,6 +86,29 @@ For chambers that has 2 shelves, we calculate the leakge from high to low base o
 You can add the measurement files from `/Light Calibrations` to visualize the light curves by each channel. ![Visualization per channel](4.gif).
 
 
+## Metadata Tab
+
+We offer ![**MIAPPE-style**](https://github.com/MIAPPE/MIAPPE) metadata *Environment* and *Experimental Factor* sheet download for **standard 1-day style protocol**. 
+
+A standard 1-day style protocol is a 24-hour protocol that has time 4 periods: Night (Const, dark and/or low temp), Day adapt (Ramp, moving condition to Day), Day (Const, bright and/or high temp), Night adapt (Ramp, moving to Night). It's of a /‾‾‾‾\\___ shape. Most protocols in Reference Protocols are of this type.
+
+In MIAPPE, 
+- **Environment** is defined as what's being kept constant throughout the experiment across all different groups.
+- **Experimental Factor** is the controlled variables (and thus will have at least 2 groups, e.g. normal temperature versus cold exposure).
+
+### Usages
+- Click **Read current** to automatically parse current protocol from Editor (this will only work if the current protocol contains at least ramp-const-ramp-const structure, and the time period must match if there's multiple).
+- Click **Generate protocol** to translate this table into protocol, and load to Editor. 
+⚠️Be careful that these 2 buttons will overwrite your current metadata table or current protocol in Editor.
+
+For each column (variable group),
+- Check **Constant** if the field will not change over time. 
+- Check **Exp. Factor** box if you are using this condition as a controlled variable. Adjust the Num of groups based on your experiment design (e.g. 3 if you have 3 temperature groups). 
+⚠️Note: when generating protocol with Exp. Factor fields, the first value will be used.
+
+After finish, click **Download csv** to get your Environment sheet (and Experimental Factor sheet, if exists.)
+
+
 ## Important Notes:
 - **Variable 2 refer to the Higher shelf.** For example, CoolWhite2 or DeepRed2 is for the settings on the higher shelf, while CoolWhite is for the lower shelf.
 - **Time format:** HH:MM:SS for no more than 24 hours. **D.HH:MM:SS for over 24 hours.** For example, 01:30:00 for 1.5 hrs, and 1.06:00:00 for 30 hours (**note: use 1.00:00:00 for 24 hrs**)

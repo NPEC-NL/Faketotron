@@ -377,7 +377,11 @@ function buildProtocolFromMetadata(
 }
 
 function downloadText(filename: string, text: string) {
-  const blob = new Blob([text], { type: "text/csv;charset=utf-8" });
+  // Prepend UTF-8 BOM so Excel & others detect encoding correctly
+  const BOM = "\uFEFF";
+  const blob = new Blob([BOM + text], {
+    type: "text/csv;charset=utf-8",
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -390,6 +394,34 @@ function downloadText(filename: string, text: string) {
     URL.revokeObjectURL(url);
   }, 0);
 }
+
+
+function getUnitForLabel(label: string): string | null {
+  // Strip trailing " day"/" night" etc. for group-based units
+  const base = label.replace(/\s+(day|night)$/, "");
+
+  // CO2 → ppm
+  if (base === "CO2" || base.startsWith("CO2 ")) return "ppm";
+
+  // Temperature → ℃
+  if (base === "Temperature" || base.startsWith("Temperature ")) return "°C";
+
+  // Hydroponics has no unit
+  if (base === "Hydroponics" || base.startsWith("Hydroponics ")) return null;
+
+  // Time durations (Night duration, Day duration, etc.) → hh:mm:ss
+  if (/duration$/i.test(label)) return "hh:mm:ss";
+
+  // Everything else (light channels, humidity, etc.) → %
+  return "%";
+}
+
+function withUnit(label: string): string {
+  const unit = getUnitForLabel(label);
+  if (!unit) return label;
+  return `${label}; ${unit}`;
+}
+
 
 function buildEnvironmentCsv(
   columns: MetadataColumn[],
@@ -409,9 +441,18 @@ function buildEnvironmentCsv(
         col.values.dayAdapt[0] ??
         col.values.nightAdapt[0] ??
         "";
-      lines.push(`"${col.groupName}","${v}"`);
+
+      // If constant and the value is 0, skip this row
+      const vTrim = String(v).trim();
+      const vNum = vTrim === "" ? NaN : Number(vTrim);
+      if (vTrim !== "" && Number.isFinite(vNum) && vNum === 0) {
+        continue;
+      }
+
+      const label = withUnit(col.groupName);
+      lines.push(`"${label}","${v}"`);
     } else {
-      // Non-constant: only two independent values per group
+      // Non-constant: two independent values per group (day & night)
       const day =
         col.values.day[0] ??
         col.values.dayAdapt[0] ??
@@ -421,27 +462,31 @@ function buildEnvironmentCsv(
         col.values.nightAdapt[0] ??
         "";
 
-      lines.push(`"${col.groupName} day","${day}"`);
-      lines.push(`"${col.groupName} night","${night}"`);
+      const dayLabel = withUnit(`${col.groupName} day`);
+      const nightLabel = withUnit(`${col.groupName} night`);
+
+      lines.push(`"${dayLabel}","${day}"`);
+      lines.push(`"${nightLabel}","${night}"`);
     }
   }
 
   // Time as Environment (when not an experimental factor):
-  // we still keep the four durations separately – they are really four segments.
+  // we keep the four segments separately; all with hh:mm:ss unit.
   if (time && (!time.isFactor || time.factorLevels <= 1)) {
     const night = time.values.night[0] ?? "";
     const dayAdapt = time.values.dayAdapt[0] ?? "";
     const day = time.values.day[0] ?? "";
     const nightAdapt = time.values.nightAdapt[0] ?? "";
 
-    lines.push(`"Night duration","${night}"`);
-    lines.push(`"Day adapt duration","${dayAdapt}"`);
-    lines.push(`"Day duration","${day}"`);
-    lines.push(`"Night adapt duration","${nightAdapt}"`);
+    lines.push(`"${withUnit("Night duration")}","${night}"`);
+    lines.push(`"${withUnit("Day adapt duration")}","${dayAdapt}"`);
+    lines.push(`"${withUnit("Day duration")}","${day}"`);
+    lines.push(`"${withUnit("Night adapt duration")}","${nightAdapt}"`);
   }
 
   return lines.join("\n");
 }
+
 
 /**
  * Experimental Factor CSV:
@@ -465,7 +510,7 @@ function buildFactorCsv(
     const levels = col.factorLevels || 1;
     const values: string[] = [];
     for (let i = 0; i < levels; i++) {
-      // Use the DAY plateau value per level as the factor value
+      // Use the DAY plateau per level as factor value
       const v =
         col.values.day[i] ??
         col.values.dayAdapt[i] ??
@@ -473,8 +518,9 @@ function buildFactorCsv(
       values.push(v);
     }
     const valuesStr = values.join(";");
-    const desc = `${col.groupName}_description`;
-    lines.push(`"${col.groupName}","${desc}","${valuesStr}"`);
+    const desc = `${col.groupName} level setpoint of growth chamber in this duration`;
+    const typeLabel = withUnit(col.groupName);
+    lines.push(`"${typeLabel}","${desc}","${valuesStr}"`);
   }
 
   // Time as Experimental Factor: multiple duration regimes
@@ -491,18 +537,22 @@ function buildFactorCsv(
     };
 
     lines.push(
-      `"Night duration","Night duration_description","${buildValues("night")}"`
+      `"${withUnit("Night duration")}","Night duration_description","${buildValues(
+        "night"
+      )}"`
     );
     lines.push(
-      `"Day adapt duration","Day adapt duration_description","${buildValues(
+      `"${withUnit("Day adapt duration")}","Day adapt duration_description","${buildValues(
         "dayAdapt"
       )}"`
     );
     lines.push(
-      `"Day duration","Day duration_description","${buildValues("day")}"`
+      `"${withUnit("Day duration")}","Day duration_description","${buildValues(
+        "day"
+      )}"`
     );
     lines.push(
-      `"Night adapt duration","Night adapt duration_description","${buildValues(
+      `"${withUnit("Night adapt duration")}","Night adapt duration_description","${buildValues(
         "nightAdapt"
       )}"`
     );
@@ -510,6 +560,7 @@ function buildFactorCsv(
 
   return lines.join("\n");
 }
+
 
 
 export default function MetadataTab() {
@@ -1188,9 +1239,8 @@ function handleDownload() {
           <br />
       </div>
           <div className="text-sm text-slate-500">
-          <p>Click <b>Read current</b> to automatically parse current protocol from Editor (this will only work if the current protocol contains at least ramp-const-ramp-const structure, and the time period must match if there's multiple). </p>
-          <p>Click <b>Generate protocol</b> to translate this table into protocol, and load to Editor.</p>
-          <p>⚠️Be careful that these 2 buttons will overwrite your current metadata table or current protocol in Editor.</p>
+          <p>Click <b>Read current</b> to automatically parse current protocol from Editor (this will only work if the current protocol contains at least ramp-const-ramp-const structure, and the time period must match if there's multiple). Click <b>Generate protocol</b> to translate this table into protocol, and load to Editor. ⚠️Be careful that these 2 buttons will overwrite your current metadata table or current protocol in Editor.</p>
+          <p>Check <b>Constant</b> if the field will not change over time. Check <b>Exp. Factor</b> box if you are using this condition as a controlled variable. Adjust the <b>Num</b> of groups based on your experiment design (e.g. 3 if you have 3 temperature groups). <b>Note:</b> when generating protocol with Exp. Factor fields, the first value will be used.</p>
           <br />
       </div>
       <div
