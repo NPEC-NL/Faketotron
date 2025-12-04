@@ -13,6 +13,13 @@ export type MetadataColumn = {
   values: Record<MetadataPhaseKey, string[]>;
 };
 
+export type MetadataDurations = Record<MetadataPhaseKey, string>;
+
+export type MetadataTime = {
+  isFactor: boolean;
+  factorLevels: number;
+  values: Record<MetadataPhaseKey, string[]>; // duration strings per phase & factor
+};
 
 type State = {
   profile: "fytotron-standard" | "fytotron-extended" | "daylight" | "helios";
@@ -21,6 +28,8 @@ type State = {
   protoRev: number;
   /** Metadata grid backing state for MetadataTab (null until initialised) */
   metadataColumns: MetadataColumn[] | null;
+  metadataDurations: MetadataDurations | null;
+  metadataTime: MetadataTime | null;
 };
 
 
@@ -31,6 +40,8 @@ type Actions = {
   updatePhase: (groupIdx: number, phaseIdx: number, patch: Partial<Phase>) => void;
   removePhase: (groupIdx: number, phaseIdx: number) => void;
   setMetadataColumns: (cols: MetadataColumn[] | null) => void;
+  setMetadataDurations: (dur: MetadataDurations | null) => void;
+  setMetadataTime: (time: MetadataTime | null) => void;
 };
 
 
@@ -38,7 +49,9 @@ export const useStore = create<State & Actions>((set) => ({
   profile: "fytotron-standard",
   protocol: { description: "", repeat: 2147483647, logic: "", sections: [{ parts: [] }] },
   protoRev: 0,
-  metadataColumns: null, 
+  metadataColumns: null,
+  metadataDurations: null,
+  metadataTime: null,
 
   setProfile: (p) => set({ profile: p }),
 
@@ -89,6 +102,8 @@ export const useStore = create<State & Actions>((set) => ({
     }),
 
   setMetadataColumns: (cols) => set({ metadataColumns: cols }),
+  setMetadataDurations: (dur) => set({ metadataDurations: dur }),
+  setMetadataTime: (time) => set({ metadataTime: time }),
 
 }));
 

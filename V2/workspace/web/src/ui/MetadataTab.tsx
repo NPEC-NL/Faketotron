@@ -2,14 +2,17 @@ import React, { useEffect, useMemo, useState } from "react";
 import * as Store from "../state/store";
 import type { Protocol, Phase, PhaseConst, PhaseRamp } from "../profiles";
 import { RANGES, type Range } from "../ranges";
-import type { MetadataColumn } from "../state/store";
+import {
+  type MetadataColumn,
+  type MetadataPhaseKey,
+  type MetadataDurations,
+  type MetadataTime,
+} from "../state/store";
 import { parseDurationToSeconds } from "../utils/time";
 
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type PhaseKey = "night" | "dayAdapt" | "day" | "nightAdapt";
-
-const PHASE_KEYS: PhaseKey[] = ["night", "dayAdapt", "day", "nightAdapt"];
+const PHASE_KEYS: MetadataPhaseKey[] = ["night", "dayAdapt", "day", "nightAdapt"];
 const DAY_SECONDS = 24 * 60 * 60;
 
 type CellValidation = {
@@ -18,11 +21,7 @@ type CellValidation = {
 };
 
 type StandardDayPattern = {
-  rampUpDuration: string;
-  dayConstDuration: string;
-  rampDownDuration: string;
-  nightConstDuration: string;
-  rampStep?: string;
+  durations: Record<MetadataPhaseKey, string>;
 };
 
 type StandardDayDetection = {
@@ -31,69 +30,7 @@ type StandardDayDetection = {
   pattern?: StandardDayPattern;
 };
 
-/**
- * Detects if the current protocol has at least one group with a
- * ramp→const→ramp→const pattern and longest duration = 1 day.
- * Returns an exemplar pattern we reuse when generating.
- */
-function detectStandardDay(protocol: Protocol): StandardDayDetection {
-  const parts = protocol.sections[0]?.parts || [];
-  if (!parts.length) return { ok: false, reason: "Protocol has no groups" };
-
-  let maxTotal = 0;
-  let hasRampConstPattern = false;
-  let chosenPattern: StandardDayPattern | undefined;
-
-  for (const g of parts as any[]) {
-    const phases: Phase[] = g.phases || [];
-    const total = phases.reduce(
-      (acc, ph) => acc + parseDurationToSeconds((ph as any).duration),
-      0
-    );
-    if (total > maxTotal) maxTotal = total;
-
-    if (
-      phases.length >= 4 &&
-      phases[0].type === "ramp" &&
-      phases[1].type === "const" &&
-      phases[2].type === "ramp" &&
-      phases[3].type === "const"
-    ) {
-      const p0 = phases[0] as PhaseRamp;
-      const p1 = phases[1] as PhaseConst;
-      const p2 = phases[2] as PhaseRamp;
-      const p3 = phases[3] as PhaseConst;
-      if (p0.end === p1.value && p2.start === p1.value && p2.end === p3.value) {
-        hasRampConstPattern = true;
-        if (!chosenPattern) {
-          chosenPattern = {
-            rampUpDuration: p0.duration,
-            dayConstDuration: p1.duration,
-            rampDownDuration: p2.duration,
-            nightConstDuration: p3.duration,
-            rampStep: p0.step,
-          };
-        }
-      }
-    }
-  }
-
-  if (!hasRampConstPattern) {
-    return { ok: false, reason: "No ramp→const→ramp→const day/night group found" };
-  }
-
-  if (Math.abs(maxTotal - DAY_SECONDS) > 1) {
-    return {
-      ok: false,
-      reason: `Longest group duration is not 1 day (got ${maxTotal} seconds, expected ${DAY_SECONDS})`,
-    };
-  }
-
-  return { ok: true, pattern: chosenPattern };
-}
-
 function getGroupName(g: any, index: number): string {
-  // Works for both canonical (name) and legacy ("group-name") formats
   return g.name ?? g["group-name"] ?? `group-${index}`;
 }
 
@@ -123,7 +60,7 @@ function humanToMachine(name: string, humanValue: number): number {
 function validateHumanValue(name: string, raw: string): CellValidation {
   const r = getRangeForGroup(name);
   if (!r) return { ok: true };
-  if (!raw.trim()) return { ok: true }; // empty is allowed; defaults handled later
+  if (!raw.trim()) return { ok: true }; // empty allowed, defaults handled later
   const v = Number(raw);
   if (!Number.isFinite(v)) return { ok: false, message: "Not a number" };
   const machine = v * (r.scale ?? 1);
@@ -136,25 +73,120 @@ function validateHumanValue(name: string, raw: string): CellValidation {
 }
 
 /**
- * Build initial metadata columns from the current protocol,
- * if it satisfies the “standard 1-day” constraints.
+ * Detection logic:
+ * - Find at least one group with ramp→const→ramp→const and boundary equality:
+ *   ramp1.end == constDay.value, ramp2.start == constDay.value, ramp2.end == constNight.value
+ * - All such groups must share identical durations for those four phases
+ *   (alignment across variable groups).
+ * - Longest group total duration must be 24h.
+ * Produces a StandardDayPattern with durations (night/dayAdapt/day/nightAdapt).
  */
-function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] | null {
-  const detection = detectStandardDay(protocol);
-  if (!detection.ok || !detection.pattern) {
-    alert(
-      "Current protocol is not standard 1-day format: " +
-        (detection.reason ?? "unknown reason")
-    );
-    return null;
-  }
-
+function detectStandardDay(protocol: Protocol): StandardDayDetection {
   const parts = protocol.sections[0]?.parts || [];
-  if (!parts.length) {
-    alert("Current protocol has no groups.");
-    return null;
+  if (!parts.length) return { ok: false, reason: "Protocol has no groups" };
+
+  let maxTotal = 0;
+  let baselineDurations: [number, number, number, number] | null = null;
+  let baselineStrings: Record<MetadataPhaseKey, string> | null = null;
+  let foundPatternGroup = false;
+
+  for (const g of parts as any[]) {
+    const phases: Phase[] = g.phases || [];
+    const total = phases.reduce(
+      (acc, ph) => acc + parseDurationToSeconds((ph as any).duration),
+      0
+    );
+    if (total > maxTotal) maxTotal = total;
+
+    if (
+      phases.length >= 4 &&
+      phases[0].type === "ramp" &&
+      phases[1].type === "const" &&
+      phases[2].type === "ramp" &&
+      phases[3].type === "const"
+    ) {
+      const p0 = phases[0] as PhaseRamp;
+      const p1 = phases[1] as PhaseConst;
+      const p2 = phases[2] as PhaseRamp;
+      const p3 = phases[3] as PhaseConst;
+
+      // Boundaries: ramp1.end == day, ramp2.start == day, ramp2.end == night
+      if (p0.end === p1.value && p2.start === p1.value && p2.end === p3.value) {
+        foundPatternGroup = true;
+
+        const dNight = parseDurationToSeconds(p3.duration);
+        const dDayAdapt = parseDurationToSeconds(p0.duration);
+        const dDay = parseDurationToSeconds(p1.duration);
+        const dNightAdapt = parseDurationToSeconds(p2.duration);
+
+        const tuple: [number, number, number, number] = [
+          dNight,
+          dDayAdapt,
+          dDay,
+          dNightAdapt,
+        ];
+
+        if (!baselineDurations) {
+          baselineDurations = tuple;
+          baselineStrings = {
+            night: p3.duration,
+            dayAdapt: p0.duration,
+            day: p1.duration,
+            nightAdapt: p2.duration,
+          };
+        } else {
+          const [bNight, bDayAdapt, bDay, bNightAdapt] = baselineDurations;
+          const tol = 1; // 1 second tolerance per segment
+          if (
+            Math.abs(dNight - bNight) > tol ||
+            Math.abs(dDayAdapt - bDayAdapt) > tol ||
+            Math.abs(dDay - bDay) > tol ||
+            Math.abs(dNightAdapt - bNightAdapt) > tol
+          ) {
+            return {
+              ok: false,
+              reason:
+                "Ramp/const groups do not share the same 4-phase day structure (durations mismatch).",
+            };
+          }
+        }
+      }
+    }
   }
 
+  if (!foundPatternGroup || !baselineDurations || !baselineStrings) {
+    return {
+      ok: false,
+      reason:
+        "No ramp→const→ramp→const day/night group with matching boundaries was found.",
+    };
+  }
+
+  if (Math.abs(maxTotal - DAY_SECONDS) > 1) {
+    return {
+      ok: false,
+      reason: `Longest group duration is not 1 day (got ${maxTotal} seconds, expected ${DAY_SECONDS})`,
+    };
+  }
+
+  return {
+    ok: true,
+    pattern: { durations: baselineStrings },
+  };
+}
+
+
+/**
+ * Build initial metadata columns (values only) from protocol,
+ * given an already-detected standard pattern (durations).
+ *
+ * We *don't* store time here – that lives in metadataDurations.
+ */
+function buildInitialColumnsFromProtocol(
+  protocol: Protocol,
+  pattern: StandardDayPattern
+): MetadataColumn[] {
+  const parts = protocol.sections[0]?.parts || [];
   const cols: MetadataColumn[] = [];
 
   for (let gi = 0; gi < parts.length; gi++) {
@@ -171,7 +203,7 @@ function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] |
       phases[0].type === "const" &&
       Math.abs(total - DAY_SECONDS) <= 1;
 
-    const values: Record<PhaseKey, string[]> = {
+    const values: Record<MetadataPhaseKey, string[]> = {
       night: [""],
       dayAdapt: [""],
       day: [""],
@@ -182,7 +214,7 @@ function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] |
       const p = phases[0] as PhaseConst;
       const human = machineToHuman(name, p.value);
       const s = String(human);
-      (Object.keys(values) as PhaseKey[]).forEach((k) => {
+      (Object.keys(values) as MetadataPhaseKey[]).forEach((k) => {
         values[k][0] = s;
       });
       cols.push({
@@ -196,7 +228,7 @@ function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] |
       continue;
     }
 
-    // Try ramp→const→ramp→const (day/night pattern)
+    // Non-constant group: derive day/night plateau values from const phases
     let dayMachine = 0;
     let nightMachine = 0;
     if (
@@ -211,7 +243,6 @@ function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] |
       dayMachine = p1.value;
       nightMachine = p3.value;
     } else {
-      // Fallback: use first const as both day & night if present
       const firstConst = phases.find((ph) => ph.type === "const") as
         | PhaseConst
         | undefined;
@@ -245,24 +276,28 @@ function buildInitialColumnsFromProtocol(protocol: Protocol): MetadataColumn[] |
 }
 
 /**
- * Reverse: take MetadataTab grid → new Protocol with:
- * - constant groups → single 1.00:00:00 const phase
- * - non-constant groups → ramp/const/ramp/const using the detected pattern
- *   (durations), values taken from metadata (first factor level only)
+ * Build a new protocol from:
+ * - metadataColumns: values (night/dayAdapt/day/nightAdapt)
+ * - durations: the time structure for night/dayAdapt/day/nightAdapt
+ *
+ * Constant groups => single 1-day const phase.
+ * Non-constant groups => ramp/const/ramp/const using durations.
  */
-function buildProtocolFromMetadata(protocol: Protocol, columns: MetadataColumn[]): Protocol {
-  const detection = detectStandardDay(protocol);
-  const pattern = detection.ok && detection.pattern
-    ? detection.pattern
-    : {
-        rampUpDuration: "00:30:00",
-        dayConstDuration: "15:30:00",
-        rampDownDuration: "00:30:00",
-        nightConstDuration: "07:30:00",
-        rampStep: "00:00:05",
-      };
-
+function buildProtocolFromMetadata(
+  protocol: Protocol,
+  columns: MetadataColumn[],
+  time: MetadataTime
+): Protocol {
   const parts = protocol.sections[0]?.parts || [];
+
+  // For the single protocol instance, we use factor level 0 for Time.
+  const dur: Record<MetadataPhaseKey, string> = {
+    night: time.values.night[0] ?? "",
+    dayAdapt: time.values.dayAdapt[0] ?? "",
+    day: time.values.day[0] ?? "",
+    nightAdapt: time.values.nightAdapt[0] ?? "",
+  };
+
   const newParts = parts.map((g: any, gi: number) => {
     const col =
       columns.find(
@@ -273,7 +308,7 @@ function buildProtocolFromMetadata(protocol: Protocol, columns: MetadataColumn[]
     const name = col.groupName;
     const values = col.values;
 
-    const firstNonEmpty = (phase: PhaseKey): number | null => {
+    const firstNonEmpty = (phase: MetadataPhaseKey): number | null => {
       const arr = values[phase] || [];
       for (const raw of arr) {
         if (raw && raw.trim()) {
@@ -293,12 +328,12 @@ function buildProtocolFromMetadata(protocol: Protocol, columns: MetadataColumn[]
       const constPhase: PhaseConst = {
         type: "const",
         value: vMachine,
-        duration: "1.00:00:00", // D.HH:MM:SS for >= 24h
+        duration: "1.00:00:00", // D.HH:MM:SS >= 24h
       };
       return { ...g, phases: [constPhase] };
     }
 
-    // Non-constant: use first factor level only
+    // Non-constant: use first factor level for protocol generation
     const dayHuman = firstNonEmpty("day") ?? 0;
     const nightHuman = firstNonEmpty("night") ?? dayHuman;
     const dayMachine = humanToMachine(name, dayHuman);
@@ -308,25 +343,25 @@ function buildProtocolFromMetadata(protocol: Protocol, columns: MetadataColumn[]
       type: "ramp",
       start: nightMachine,
       end: dayMachine,
-      duration: pattern.rampUpDuration,
-      step: pattern.rampStep,
+      duration: dur.dayAdapt,
+      step: (g.phases?.[0] as PhaseRamp | undefined)?.step ?? "00:00:05",
     };
     const constDay: PhaseConst = {
       type: "const",
       value: dayMachine,
-      duration: pattern.dayConstDuration,
+      duration: dur.day,
     };
     const rampDown: PhaseRamp = {
       type: "ramp",
       start: dayMachine,
       end: nightMachine,
-      duration: pattern.rampDownDuration,
-      step: pattern.rampStep,
+      duration: dur.nightAdapt,
+      step: (g.phases?.[2] as PhaseRamp | undefined)?.step ?? "00:00:05",
     };
     const constNight: PhaseConst = {
       type: "const",
       value: nightMachine,
-      duration: pattern.nightConstDuration,
+      duration: dur.night,
     };
 
     return { ...g, phases: [rampUp, constDay, rampDown, constNight] };
@@ -356,46 +391,85 @@ function downloadText(filename: string, text: string) {
   }, 0);
 }
 
-/** MIAPPE Environment CSV */
-function buildEnvironmentCsv(columns: MetadataColumn[]): string {
+function buildEnvironmentCsv(
+  columns: MetadataColumn[],
+  time: MetadataTime | null
+): string {
   const lines: string[] = [];
   lines.push("Environment parameter,Environment parameter value");
+
   for (const col of columns) {
-    if (col.isFactor) continue;
+    if (col.isFactor) continue; // Experimental Factors do NOT appear here
+
     if (col.constant) {
-      const v = col.values.day[0] ?? col.values.night[0] ?? "";
+      // Single invariant value for the whole day
+      const v =
+        col.values.day[0] ??
+        col.values.night[0] ??
+        col.values.dayAdapt[0] ??
+        col.values.nightAdapt[0] ??
+        "";
       lines.push(`"${col.groupName}","${v}"`);
     } else {
-      for (const phase of PHASE_KEYS) {
-        const v = col.values[phase][0] ?? "";
-        const label =
-          phase === "night"
-            ? "night"
-            : phase === "dayAdapt"
-            ? "day adapt"
-            : phase === "day"
-            ? "day"
-            : "night adapt";
-        lines.push(`"${col.groupName} ${label}","${v}"`);
-      }
+      // Non-constant: only two independent values per group
+      const day =
+        col.values.day[0] ??
+        col.values.dayAdapt[0] ??
+        "";
+      const night =
+        col.values.night[0] ??
+        col.values.nightAdapt[0] ??
+        "";
+
+      lines.push(`"${col.groupName} day","${day}"`);
+      lines.push(`"${col.groupName} night","${night}"`);
     }
   }
+
+  // Time as Environment (when not an experimental factor):
+  // we still keep the four durations separately – they are really four segments.
+  if (time && (!time.isFactor || time.factorLevels <= 1)) {
+    const night = time.values.night[0] ?? "";
+    const dayAdapt = time.values.dayAdapt[0] ?? "";
+    const day = time.values.day[0] ?? "";
+    const nightAdapt = time.values.nightAdapt[0] ?? "";
+
+    lines.push(`"Night duration","${night}"`);
+    lines.push(`"Day adapt duration","${dayAdapt}"`);
+    lines.push(`"Day duration","${day}"`);
+    lines.push(`"Night adapt duration","${nightAdapt}"`);
+  }
+
   return lines.join("\n");
 }
 
-/** MIAPPE Experimental Factor CSV */
-function buildFactorCsv(columns: MetadataColumn[]): string | null {
+/**
+ * Experimental Factor CSV:
+ * - retains existing factor columns
+ * - also includes time durations, one row per phase
+ *   (Night/Day adapt/Day/Night adapt duration) with their single level.
+ */
+function buildFactorCsv(
+  columns: MetadataColumn[],
+  time: MetadataTime | null
+): string | null {
   const factorCols = columns.filter((c) => c.isFactor);
-  if (!factorCols.length) return null;
+  const hasTimeFactor = time && time.isFactor && time.factorLevels > 1;
+  if (!factorCols.length && !hasTimeFactor) return null;
 
   const lines: string[] = [];
   lines.push("Experiment Factor type,Experiment Factor description,Experiment Factor values");
 
+  // Other variables as Experimental Factors
   for (const col of factorCols) {
     const levels = col.factorLevels || 1;
     const values: string[] = [];
     for (let i = 0; i < levels; i++) {
-      const v = col.values.day[i] ?? "";
+      // Use the DAY plateau value per level as the factor value
+      const v =
+        col.values.day[i] ??
+        col.values.dayAdapt[i] ??
+        "";
       values.push(v);
     }
     const valuesStr = values.join(";");
@@ -403,134 +477,346 @@ function buildFactorCsv(columns: MetadataColumn[]): string | null {
     lines.push(`"${col.groupName}","${desc}","${valuesStr}"`);
   }
 
+  // Time as Experimental Factor: multiple duration regimes
+  if (hasTimeFactor && time) {
+    const n = time.factorLevels;
+
+    const buildValues = (phase: MetadataPhaseKey): string => {
+      const arr = time.values[phase] || [];
+      const vals: string[] = [];
+      for (let i = 0; i < n; i++) {
+        vals.push(arr[i] ?? "");
+      }
+      return vals.join(";");
+    };
+
+    lines.push(
+      `"Night duration","Night duration_description","${buildValues("night")}"`
+    );
+    lines.push(
+      `"Day adapt duration","Day adapt duration_description","${buildValues(
+        "dayAdapt"
+      )}"`
+    );
+    lines.push(
+      `"Day duration","Day duration_description","${buildValues("day")}"`
+    );
+    lines.push(
+      `"Night adapt duration","Night adapt duration_description","${buildValues(
+        "nightAdapt"
+      )}"`
+    );
+  }
+
   return lines.join("\n");
 }
+
 
 export default function MetadataTab() {
   const protocol: Protocol = useProto((s: any) => s.protocol);
   const colsFromStore: MetadataColumn[] | null = useProto(
     (s: any) => (s.metadataColumns as MetadataColumn[] | null) ?? null
   );
+const timeFromStore: MetadataTime | null = useProto(
+  (s: any) => (s.metadataTime as MetadataTime | null) ?? null
+);
+
   const setMetadataColumns = useProto((s: any) => s.setMetadataColumns);
+  const setMetadataTime = useProto((s: any) => s.setMetadataTime);
   const setProtocol = useProto((s: any) => s.setProtocol);
 
   const [hardKey, setHardKey] = useState(0);
   const [status, setStatus] = useState<string>("");
 
-  // When a new protocol is loaded (from FilesTab etc.), clear metadata
   useEffect(() => {
     const onLoaded = () => {
       setMetadataColumns(null);
+      setMetadataTime(null);
       setHardKey((k: number) => k + 1);
       setStatus("");
     };
     window.addEventListener("protocol:loaded", onLoaded);
     return () => window.removeEventListener("protocol:loaded", onLoaded);
-  }, [setMetadataColumns]);
+  }, [setMetadataColumns, setMetadataTime]);
 
   const cols: MetadataColumn[] = useMemo(() => colsFromStore ?? [], [colsFromStore]);
+  const time: MetadataTime | null = timeFromStore;
 
-  function handleReadCurrent() {
-    const newCols = buildInitialColumnsFromProtocol(protocol);
-    if (!newCols) return;
-    setMetadataColumns(newCols);
-    setStatus("Loaded from protocol");
-    setTimeout(() => setStatus(""), 1500);
+function handleReadCurrent() {
+  const detection = detectStandardDay(protocol);
+  if (!detection.ok || !detection.pattern) {
+    alert(
+      "Current protocol is not standard 1-day format: " +
+        (detection.reason ?? "unknown reason")
+    );
+    return;
   }
 
-  function handleGenerateProtocol() {
-    if (!cols.length) {
-      alert("No metadata defined to generate protocol from.");
+  const newCols = buildInitialColumnsFromProtocol(protocol, detection.pattern);
+
+  // Seed Time column from detected durations; by default it's Environment (factorLevels=1)
+  const baseDur = detection.pattern.durations;
+  const newTime: MetadataTime = {
+    isFactor: false,
+    factorLevels: 1,
+    values: {
+      night: [baseDur.night],
+      dayAdapt: [baseDur.dayAdapt],
+      day: [baseDur.day],
+      nightAdapt: [baseDur.nightAdapt],
+    },
+  };
+
+  setMetadataColumns(newCols);
+  setMetadataTime(newTime);
+  setStatus("Loaded from protocol");
+  setTimeout(() => setStatus(""), 1500);
+}
+
+
+function handleGenerateProtocol() {
+  if (!cols.length) {
+    alert("No metadata defined to generate protocol from.");
+    return;
+  }
+  if (!time) {
+    alert(
+      "No Time column defined. Use 'Read current' first or fill the Time column."
+    );
+    return;
+  }
+
+  // For Time, we always use level 0 durations to build the single protocol instance.
+  const durNight = time.values.night[0] ?? "";
+  const durDayAdapt = time.values.dayAdapt[0] ?? "";
+  const durDay = time.values.day[0] ?? "";
+  const durNightAdapt = time.values.nightAdapt[0] ?? "";
+
+  const dNight = parseDurationToSeconds(durNight);
+  const dDayAdapt = parseDurationToSeconds(durDayAdapt);
+  const dDay = parseDurationToSeconds(durDay);
+  const dNightAdapt = parseDurationToSeconds(durNightAdapt);
+
+  const durationFields: [string, number, string][] = [
+    ["Night duration", dNight, durNight],
+    ["Day adapt duration", dDayAdapt, durDayAdapt],
+    ["Day duration", dDay, durDay],
+    ["Night adapt duration", dNightAdapt, durNightAdapt],
+  ];
+
+  for (const [label, sec, raw] of durationFields) {
+    if (!raw || !raw.trim() || sec <= 0) {
+      alert(
+        `${label} must be a valid positive duration string (e.g. HH:MM:SS or D.HH:MM:SS).`
+      );
       return;
     }
+  }
 
-    const factorCols = cols.filter((c) => c.isFactor && c.factorLevels > 1);
-    if (factorCols.length) {
-      const msg = factorCols.map((c) => `- ${c.groupName}`).join("\n");
-      alert(
-        "Experimental factors with multiple values detected.\n" +
-          "The generated protocol can only represent a single set of conditions.\n\n" +
-          "For these groups, the FIRST value will be used:\n" +
-          msg
-      );
-    }
+  const total = dNight + dDayAdapt + dDay + dNightAdapt;
+  if (Math.abs(total - DAY_SECONDS) > 1) {
+    alert(
+      `Durations must sum to 24 hours (currently ${total} seconds). Please adjust Night / Day adapt / Day / Night adapt.`
+    );
+    return;
+  }
 
-    // Validate ranges
-    const errors: string[] = [];
-    for (const col of cols) {
-      for (const phase of PHASE_KEYS) {
-        const arr = col.values[phase] || [];
-        for (let i = 0; i < (col.isFactor ? col.factorLevels : 1); i++) {
-          const raw = arr[i] ?? "";
-          const v = validateHumanValue(col.groupName, raw);
-          if (!v.ok) {
-            const label =
-              phase === "night"
-                ? "night"
-                : phase === "dayAdapt"
-                ? "day adapt"
-                : phase === "day"
-                ? "day"
-                : "night adapt";
-            errors.push(
-              `${col.groupName} ${label}${
-                col.isFactor ? ` (level ${i + 1})` : ""
-              }: ${v.message}`
-            );
-          }
+  // Warn about multi-level experimental factors (we will use first level).
+  const factorCols = cols.filter((c) => c.isFactor && c.factorLevels > 1);
+  if (factorCols.length) {
+    const msg = factorCols.map((c) => `- ${c.groupName}`).join("\n");
+    alert(
+      "Experimental factors with multiple values detected.\n" +
+        "The generated protocol can only represent a single set of conditions.\n\n" +
+        "For these groups, the FIRST value will be used:\n" +
+        msg
+    );
+  }
+  if (time.isFactor && time.factorLevels > 1) {
+    alert(
+      "Time is marked as an experimental factor with multiple levels.\n" +
+        "The generated protocol will use only the FIRST set of durations."
+    );
+  }
+
+  // Validate scalar ranges (CO2, light, etc.)
+  const errors: string[] = [];
+  for (const col of cols) {
+    for (const phase of PHASE_KEYS) {
+      const arr = col.values[phase] || [];
+      for (let i = 0; i < (col.isFactor ? col.factorLevels : 1); i++) {
+        const raw = arr[i] ?? "";
+        const v = validateHumanValue(col.groupName, raw);
+        if (!v.ok) {
+          const label =
+            phase === "night"
+              ? "night"
+              : phase === "dayAdapt"
+              ? "day adapt"
+              : phase === "day"
+              ? "day"
+              : "night adapt";
+          errors.push(
+            `${col.groupName} ${label}${
+              col.isFactor ? ` (level ${i + 1})` : ""
+            }: ${v.message}`
+          );
         }
       }
     }
+  }
 
-    if (errors.length) {
-      const proceed = window.confirm(
-        "Some values are invalid or outside allowed ranges:\n\n" +
-          errors.slice(0, 8).join("\n") +
-          (errors.length > 8 ? `\n...and ${errors.length - 8} more` : "") +
-          "\n\nContinue anyway?"
-      );
-      if (!proceed) return;
-    }
-
-    if (!window.confirm("This will overwrite the current protocol. Continue?")) return;
-
-    const newProtocol = buildProtocolFromMetadata(protocol, cols);
-    setProtocol(newProtocol);
-
-    // Mirror GraphTab: notify others that a draft-like save happened
-    window.dispatchEvent(
-      new CustomEvent("protocol:save-draft", {
-        detail: { protocol: newProtocol, reason: "metadata" },
-      })
+  if (errors.length) {
+    const proceed = window.confirm(
+      "Some values are invalid or outside allowed ranges:\n\n" +
+        errors.slice(0, 8).join("\n") +
+        (errors.length > 8 ? `\n...and ${errors.length - 8} more` : "") +
+        "\n\nContinue anyway?"
     );
-
-    setStatus("Protocol generated");
-    setTimeout(() => setStatus(""), 1500);
+    if (!proceed) return;
   }
 
-  function handleDownload() {
-    if (!cols.length) {
-      alert("No metadata to download. Use 'Read current' first.");
-      return;
-    }
-    const envCsv = buildEnvironmentCsv(cols);
-    const facCsv = buildFactorCsv(cols);
-
-    downloadText("environment.csv", envCsv);
-    if (facCsv) {
-      downloadText("experimental_factors.csv", facCsv);
-    }
-    setStatus("CSV downloaded");
-    setTimeout(() => setStatus(""), 1500);
+  if (!window.confirm("This will overwrite the current protocol. Continue?")) {
+    return;
   }
+
+  const newProtocol = buildProtocolFromMetadata(protocol, cols, time);
+  setProtocol(newProtocol);
+
+  window.dispatchEvent(
+    new CustomEvent("protocol:save-draft", {
+      detail: { protocol: newProtocol, reason: "metadata" },
+    })
+  );
+
+  setStatus("Protocol generated");
+  setTimeout(() => setStatus(""), 1500);
+}
+
+
+function handleDownload() {
+  // Read latest metadata from the store (includes anything committed on blur)
+  const state = useProto.getState() as {
+    metadataColumns: MetadataColumn[] | null;
+    metadataTime: MetadataTime | null;
+  };
+
+  const cols = state.metadataColumns ?? [];
+  const time = state.metadataTime ?? null;
+
+  if (!cols.length) {
+    alert("No metadata to download. Use 'Read current' first.");
+    return;
+  }
+
+  const errors: string[] = [];
+
+  // 1) Scalar range checks
+  for (const col of cols) {
+    for (const phase of PHASE_KEYS) {
+      const arr = col.values[phase] || [];
+      const maxLevels = col.isFactor ? col.factorLevels : 1;
+      for (let i = 0; i < maxLevels; i++) {
+        const raw = arr[i] ?? "";
+        const v = validateHumanValue(col.groupName, raw);
+        if (!v.ok) {
+          const label =
+            phase === "night"
+              ? "night"
+              : phase === "dayAdapt"
+              ? "day adapt"
+              : phase === "day"
+              ? "day"
+              : "night adapt";
+          errors.push(
+            `${col.groupName} ${label}${
+              col.isFactor ? ` (level ${i + 1})` : ""
+            }: ${v.message}`
+          );
+        }
+      }
+    }
+  }
+
+  // 2) Time / duration checks (all factor levels must be valid, sum to 24h)
+  if (time) {
+    const maxLevels = time.isFactor ? time.factorLevels : 1;
+    for (let i = 0; i < maxLevels; i++) {
+      const durNight = time.values.night[i] ?? "";
+      const durDayAdapt = time.values.dayAdapt[i] ?? "";
+      const durDay = time.values.day[i] ?? "";
+      const durNightAdapt = time.values.nightAdapt[i] ?? "";
+
+      const dNight = parseDurationToSeconds(durNight);
+      const dDayAdapt = parseDurationToSeconds(durDayAdapt);
+      const dDay = parseDurationToSeconds(durDay);
+      const dNightAdapt = parseDurationToSeconds(durNightAdapt);
+
+      const levelSuffix = maxLevels > 1 ? ` (level ${i + 1})` : "";
+
+      const durationFields: [string, number, string][] = [
+        ["Night duration", dNight, durNight],
+        ["Day adapt duration", dDayAdapt, durDayAdapt],
+        ["Day duration", dDay, durDay],
+        ["Night adapt duration", dNightAdapt, durNightAdapt],
+      ];
+
+      for (const [label, sec, raw] of durationFields) {
+        if (!raw || !raw.trim() || sec <= 0) {
+          errors.push(
+            `${label}${levelSuffix}: must be a valid positive duration (HH:MM:SS or D.HH:MM:SS)`
+          );
+        }
+      }
+
+      const total = dNight + dDayAdapt + dDay + dNightAdapt;
+      if (Math.abs(total - DAY_SECONDS) > 1) {
+        errors.push(
+          `Durations${levelSuffix} must sum to 24 hours (currently ${total} seconds).`
+        );
+      }
+    }
+  }
+
+  // 3) Let the user choose whether to proceed despite issues
+  if (errors.length) {
+    const proceed = window.confirm(
+      "Some values are invalid, out of range, or durations do not sum to 24 hours:\n\n" +
+        errors.slice(0, 10).join("\n") +
+        (errors.length > 10 ? `\n...and ${errors.length - 10} more` : "") +
+        "\n\nContinue and download CSV anyway?"
+    );
+    if (!proceed) return;
+  }
+
+  // 4) Generate CSVs from the latest metadata
+  const envCsv = buildEnvironmentCsv(cols, time);
+  const facCsv = buildFactorCsv(cols, time);
+
+  downloadText("environment.csv", envCsv);
+  if (facCsv) {
+    downloadText("experimental_factors.csv", facCsv);
+  }
+
+  setStatus("CSV downloaded");
+  setTimeout(() => setStatus(""), 1500);
+}
+
+
+
+  // --- grid editing helpers ---
 
   function toggleConstant(col: MetadataColumn) {
-    const updated = cols.map((c) => {
+    const state = useProto.getState() as {
+      metadataColumns: MetadataColumn[] | null;
+    };
+    const liveCols = state.metadataColumns ?? [];
+
+    const updated = liveCols.map((c) => {
       if (c.groupIndex !== col.groupIndex) return c;
       const constant = !c.constant;
       const values = { ...c.values };
       if (constant) {
-        // collapse to single constant value (use day or night)
         const base = c.values.day[0] || c.values.night[0] || "";
         PHASE_KEYS.forEach((k) => {
           (values as any)[k] = [base];
@@ -542,11 +828,16 @@ export default function MetadataTab() {
   }
 
   function toggleFactor(col: MetadataColumn) {
-    const updated = cols.map((c) => {
+    const state = useProto.getState() as {
+      metadataColumns: MetadataColumn[] | null;
+    };
+    const liveCols = state.metadataColumns ?? [];
+
+    const updated = liveCols.map((c) => {
       if (c.groupIndex !== col.groupIndex) return c;
       const isFactor = !c.isFactor;
       const factorLevels = isFactor ? Math.max(2, c.factorLevels || 2) : 1;
-      const values: Record<PhaseKey, string[]> = {} as any;
+      const values: Record<MetadataPhaseKey, string[]> = {} as any;
       PHASE_KEYS.forEach((k) => {
         const arr = [...(c.values[k] || [])];
         const base = arr[0] ?? "";
@@ -563,10 +854,16 @@ export default function MetadataTab() {
 
   function updateFactorLevels(col: MetadataColumn, levelsRaw: string) {
     const n = Math.max(1, Number(levelsRaw) || 1);
-    const factorLevels = n;
-    const updated = cols.map((c) => {
+
+    const state = useProto.getState() as {
+      metadataColumns: MetadataColumn[] | null;
+    };
+    const liveCols = state.metadataColumns ?? [];
+
+    const updated = liveCols.map((c) => {
       if (c.groupIndex !== col.groupIndex) return c;
-      const values: Record<PhaseKey, string[]> = {} as any;
+      const factorLevels = n;
+      const values: Record<MetadataPhaseKey, string[]> = {} as any;
       PHASE_KEYS.forEach((k) => {
         const arr = [...(c.values[k] || [])];
         const base = arr[0] ?? "";
@@ -583,24 +880,197 @@ export default function MetadataTab() {
 
   function updateCell(
     col: MetadataColumn,
-    phase: PhaseKey,
+    phase: MetadataPhaseKey,
     levelIndex: number,
     value: string
   ) {
     const updated = cols.map((c) => {
       if (c.groupIndex !== col.groupIndex) return c;
-      const values: Record<PhaseKey, string[]> = {} as any;
-      PHASE_KEYS.forEach((k) => {
-        const arr = [...(c.values[k] || [])];
-        if (k === phase) {
-          arr[levelIndex] = value;
+
+      // Clone all phase arrays so we never mutate in-place
+      const nextValues: Record<MetadataPhaseKey, string[]> = {
+        night: [...(c.values.night || [])],
+        dayAdapt: [...(c.values.dayAdapt || [])],
+        day: [...(c.values.day || [])],
+        nightAdapt: [...(c.values.nightAdapt || [])],
+      };
+
+      if (c.constant) {
+        // Constant columns: single full-day value per factor level.
+        // Any edit (night/day/...) must propagate to ALL 4 phases so
+        // day, dayAdapt, night and nightAdapt stay identical.
+        PHASE_KEYS.forEach((k) => {
+          nextValues[k][levelIndex] = value;
+        });
+      } else {
+        // Non-constant groups: only 2 independent values per level.
+        // Enforce: dayAdapt == day, nightAdapt == night.
+        if (phase === "day" || phase === "dayAdapt") {
+          nextValues.day[levelIndex] = value;
+          nextValues.dayAdapt[levelIndex] = value;
+        } else if (phase === "night" || phase === "nightAdapt") {
+          nextValues.night[levelIndex] = value;
+          nextValues.nightAdapt[levelIndex] = value;
         }
-        (values as any)[k] = arr;
-      });
-      return { ...c, values };
+      }
+
+      return { ...c, values: nextValues };
     });
+
     setMetadataColumns(updated);
   }
+
+
+  function toggleTimeFactor() {
+    const state = useProto.getState() as {
+      metadataTime: MetadataTime | null;
+    };
+    const liveTime = state.metadataTime;
+    if (!liveTime) return;
+
+    const isFactor = !liveTime.isFactor;
+    const factorLevels = isFactor ? Math.max(2, liveTime.factorLevels || 2) : 1;
+    const values: Record<MetadataPhaseKey, string[]> = {} as any;
+    PHASE_KEYS.forEach((k) => {
+      const arr = [...(liveTime.values[k] || [])];
+      const base = arr[0] ?? "";
+      const next: string[] = [];
+      for (let i = 0; i < factorLevels; i++) {
+        next[i] = arr[i] ?? base;
+      }
+      (values as any)[k] = next;
+    });
+    setMetadataTime({ ...liveTime, isFactor, factorLevels, values });
+  }
+
+  function updateTimeFactorLevels(levelsRaw: string) {
+    const n = Math.max(1, Number(levelsRaw) || 1);
+
+    const state = useProto.getState() as {
+      metadataTime: MetadataTime | null;
+    };
+    const liveTime = state.metadataTime;
+    if (!liveTime) return;
+
+    const factorLevels = n;
+    const values: Record<MetadataPhaseKey, string[]> = {} as any;
+    PHASE_KEYS.forEach((k) => {
+      const arr = [...(liveTime.values[k] || [])];
+      const base = arr[0] ?? "";
+      const next: string[] = [];
+      for (let i = 0; i < factorLevels; i++) {
+        next[i] = arr[i] ?? base;
+      }
+      (values as any)[k] = next;
+    });
+    setMetadataTime({
+      ...liveTime,
+      isFactor: factorLevels > 1,
+      factorLevels,
+      values,
+    });
+  }
+
+  function updateTimeCell(phase: MetadataPhaseKey, levelIndex: number, value: string) {
+    const state = useProto.getState() as {
+      metadataTime: MetadataTime | null;
+    };
+    const liveTime = state.metadataTime;
+    if (!liveTime) return;
+
+    const values: Record<MetadataPhaseKey, string[]> = {} as any;
+    PHASE_KEYS.forEach((k) => {
+      const arr = [...(liveTime.values[k] || [])];
+      if (k === phase) {
+        arr[levelIndex] = value;
+      }
+      (values as any)[k] = arr;
+    });
+    setMetadataTime({ ...liveTime, values });
+  }
+  
+  function renderTimeHeader() {
+    if (!time) {
+      // When Time isn't initialised yet (before Read current)
+      return (
+        <th style={{ padding: "4px", border: "1px solid #ddd", verticalAlign: "top" }}>
+          <div style={{ fontWeight: "bold" }}>Time</div>
+        </th>
+      );
+    }
+
+  return (
+    <th style={{ padding: "4px", border: "1px solid #ddd", verticalAlign: "top" }}>
+      <div style={{ fontSize: "0.8em" }}>
+        {/* no Constant checkbox for Time */}
+        <label style={{ display: "block" }}>
+          <input
+            type="checkbox"
+            checked={time.isFactor}
+            onChange={toggleTimeFactor}
+          />{" "}
+          Exp. Factor, Num:{" "}
+          <input
+            type="number"
+            min={1}
+            value={time.factorLevels}
+            onChange={(e) => updateTimeFactorLevels(e.target.value)}
+            style={{ width: 50 }}
+          />
+        </label>
+      </div>
+      <div style={{ marginTop: 4, fontWeight: "bold" }}>Time</div>
+    </th>
+  );
+}
+
+  function renderTimeCell(phase: MetadataPhaseKey) {
+    if (!time) {
+      return (
+        <td
+          key={`time-${phase}`}
+          style={{ padding: "4px", border: "1px solid #ddd", minWidth: 120 }}
+        >
+          {/* empty until Read current */}
+        </td>
+      );
+    }
+
+    const arr = time.values[phase] || [];
+    const levels = time.isFactor ? time.factorLevels : 1;
+    const inputs = [];
+
+    for (let i = 0; i < levels; i++) {
+      const raw = arr[i] ?? "";
+      inputs.push(
+        <input
+          key={`time-${phase}-${i}`}
+          type="text"
+          value={raw}
+          placeholder={
+            phase === "night"
+              ? "e.g. 07:30:00"
+              : phase === "day"
+              ? "e.g. 15:30:00"
+              : ""
+          }
+          onChange={(e) => updateTimeCell(phase, i, e.target.value)}
+          title="Duration (HH:MM:SS or D.HH:MM:SS)"
+          style={{ width: 100, marginRight: 4 }}
+        />
+      );
+    }
+
+    return (
+      <td
+        key={`time-${phase}`}
+        style={{ padding: "4px", border: "1px solid #ddd", minWidth: 120 }}
+      >
+        {inputs}
+      </td>
+    );
+  }
+
 
   function renderHeaderCell(col: MetadataColumn) {
     const range = getRangeForGroup(col.groupName);
@@ -651,7 +1121,7 @@ export default function MetadataTab() {
     );
   }
 
-  function renderCell(col: MetadataColumn, phase: PhaseKey) {
+  function renderValueCell(col: MetadataColumn, phase: MetadataPhaseKey) {
     const arr = col.values[phase] || [];
     const levels = col.isFactor ? col.factorLevels : 1;
 
@@ -677,9 +1147,10 @@ export default function MetadataTab() {
     for (let i = 0; i < levels; i++) {
       const raw = arr[i] ?? "";
       const validation = validateHumanValue(col.groupName, raw);
+
       inputs.push(
         <input
-          key={i}
+          key={`${col.groupIndex}-${phase}-${i}`}
           type="number"
           step="any"
           value={raw}
@@ -702,14 +1173,32 @@ export default function MetadataTab() {
     );
   }
 
+
+
+
   return (
     <div key={hardKey}>
+      <div>
+          <p><b>Note:</b> Use this page <b>only if</b> you're using (or want to create) a <b><i>standard 1-day style protocol</i></b>.</p>
+          <p className="text-sm text-slate-500">A <i>standard 1-day style protocol</i> is a 24-hour protocol that has time 4 periods: Night (Const, dark and/or low temp), Day adapt (Ramp, moving condition to Day), Day (Const, bright and/or high temp), Night adapt (Ramp, moving to Night). It's of a /‾‾‾‾\___ shape. Most protocols in Reference Protocols are of this type. </p>
+          <br />
+          <p>This tab is for generating <b>MIAPPE-style</b> <i>Environment</i> or <i>Experimental Factor</i> list.
+          <br /><i>Environment</i> is defined as what's being kept constant throughout the experiment across all different groups.
+          <br /><i>Experimental Factor</i> is the controlled variables (and thus will have at least 2 groups, e.g. normal temperature versus cold exposure).</p>
+          <br />
+      </div>
+          <div className="text-sm text-slate-500">
+          <p>Click <b>Read current</b> to automatically parse current protocol from Editor (this will only work if the current protocol contains at least ramp-const-ramp-const structure, and the time period must match if there's multiple). </p>
+          <p>Click <b>Generate protocol</b> to translate this table into protocol, and load to Editor.</p>
+          <p>⚠️Be careful that these 2 buttons will overwrite your current metadata table or current protocol in Editor.</p>
+          <br />
+      </div>
       <div
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
         <div>
-          <button onClick={handleReadCurrent}>Read current</button>{" "}
-          <button onClick={handleGenerateProtocol}>Generate protocol</button>{" "}
+          <button onClick={handleReadCurrent} className="px-3 py-1.5 text-sm border rounded">Read current</button>{" "}
+          <button onClick={handleGenerateProtocol} className="px-3 py-1.5 text-sm border rounded">Generate protocol</button>{" "}
           {status && (
             <span style={{ marginLeft: 8, fontSize: "0.85em", color: "#666" }}>
               {status}
@@ -717,7 +1206,17 @@ export default function MetadataTab() {
           )}
         </div>
         <div>
-          <button onClick={handleDownload}>Download</button>
+          <button 
+           style={{
+           padding: "6px 12px",
+           border: "1px solid lightgreen",
+           borderRadius: "4px",
+           background: "lightgreen",
+           color: "black",
+           cursor: "pointer",
+           fontWeight: 600,
+         }}
+        onClick={handleDownload}>Download csv</button>
         </div>
       </div>
 
@@ -728,12 +1227,11 @@ export default function MetadataTab() {
             protocol.
           </p>
         ) : (
-          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 600 }}>
+          <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 700 }}>
             <thead>
               <tr>
-                <th style={{ padding: "4px", border: "1px solid #ddd" }}>
-                  Phase / Time
-                </th>
+                <th style={{ padding: "4px", border: "1px solid #ddd" }}>Phase</th>
+                {renderTimeHeader()}
                 {cols.map((col) => renderHeaderCell(col))}
               </tr>
             </thead>
@@ -745,6 +1243,7 @@ export default function MetadataTab() {
                       padding: "4px",
                       border: "1px solid #ddd",
                       fontWeight: "bold",
+                      minWidth: 110,
                     }}
                   >
                     {phase === "night"
@@ -755,7 +1254,8 @@ export default function MetadataTab() {
                       ? "Day"
                       : "Night adapt"}
                   </td>
-                  {cols.map((col) => renderCell(col, phase))}
+                  {renderTimeCell(phase)}
+                  {cols.map((col) => renderValueCell(col, phase))}
                 </tr>
               ))}
             </tbody>
