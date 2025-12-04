@@ -3,11 +3,12 @@ import FilesToolbar from "./FilesTab";
 import EditorTab from "./EditorTab";
 import GraphTab from "./GraphTab";
 import LightTools from "./LightTools";
+import MetadataTab from "./MetadataTab";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "editor" | "graph" | "light";
+type TabKey = "editor" | "graph" | "light" | "metadata";
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>("editor");
@@ -25,6 +26,7 @@ export default function App() {
   const editorRef = useRef<HTMLDivElement>(null);
   const graphRef  = useRef<HTMLDivElement>(null);
   const lightRef  = useRef<HTMLDivElement>(null);
+  const metaRef  = useRef<HTMLDivElement>(null);
 
   const TabBtn = (k: TabKey, label: string) => (
     <button
@@ -50,6 +52,8 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
+        {/* Hidden before finish {TabBtn("metadata", "Metadata")} */}
+        
       </div>
 
       <div
@@ -71,6 +75,11 @@ export default function App() {
       <div ref={lightRef} style={{ display: tab === "light" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <LightTools />
       </div>
+
+      <div ref={metaRef} style={{ display: tab === "metadata" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
+        <MetadataTab />
+      </div>
+
     </div>
   );
 }
