@@ -88,7 +88,7 @@ You can add the measurement files from `/Light Calibrations` to visualize the li
 
 ## Metadata Tab
 
-We offer ![**MIAPPE-style**](https://github.com/MIAPPE/MIAPPE) metadata *Environment* and *Experimental Factor* sheet download for **standard 1-day style protocol**. 
+Faketotron offer ![**MIAPPE-style**](https://github.com/MIAPPE/MIAPPE) metadata *Environment* and *Experimental Factor* sheet download for **standard 1-day style protocol**. 
 
 A standard 1-day style protocol is a 24-hour protocol that has time 4 periods: Night (Const, dark and/or low temp), Day adapt (Ramp, moving condition to Day), Day (Const, bright and/or high temp), Night adapt (Ramp, moving to Night). It's of a /‾‾‾‾\\___ shape. Most protocols in Reference Protocols are of this type.
 
