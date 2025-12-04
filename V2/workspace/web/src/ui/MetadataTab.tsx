@@ -30,6 +30,133 @@ type StandardDayDetection = {
   pattern?: StandardDayPattern;
 };
 
+type DurationKind = "day" | "night" | "dayAdapt" | "nightAdapt";
+
+type FactorDescContext = {
+  baseType: string;
+  shelf?: number;
+  durationKind?: DurationKind;
+};
+
+function parseBaseTypeAndShelf(rawName: string): { baseType: string; shelf?: number } {
+  const trimmed = rawName.trim();
+  const m = trimmed.match(/^(.*?)(?:\s+(\d+))?$/); // e.g. "Cool White 2"
+  if (!m) return { baseType: trimmed };
+  const baseType = m[1].trim();
+  const shelf = m[2] ? Number(m[2]) : undefined;
+  return { baseType, shelf: Number.isFinite(shelf) ? shelf : undefined };
+}
+
+function shelfSuffix(shelf?: number): string {
+  if (!shelf) return "";
+  return ` (shelf ${shelf})`;
+}
+
+function durationLabel(kind?: DurationKind): string {
+  if (!kind) return "";
+  switch (kind) {
+    case "day":
+      return "daytime";
+    case "night":
+      return "night-time";
+    case "dayAdapt":
+      return "transition from night to day";
+    case "nightAdapt":
+      return "transition from day to night";
+    default:
+      return "";
+  }
+}
+
+const FACTOR_DESCRIPTION_TEMPLATES: Record<string, (ctx: FactorDescContext) => string> = {
+  CO2: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `CO₂ concentration during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Temperature: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Air temperature during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Humidity: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Relative humidity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Hydroponics: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Hydroponics state during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+
+  "Cool White": (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Cool White LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  "Deep-Red": (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Deep-Red LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  "Far-Red": (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Far-Red LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Blue: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Blue LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Green: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Green LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Red: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Red LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Amber: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Amber LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  Cyan: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `Cyan LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+  UVA: (ctx) => {
+    const when = durationLabel(ctx.durationKind) || "daytime";
+    return `UVA LED intensity during ${when}${shelfSuffix(ctx.shelf)}`;
+  },
+};
+
+function buildFactorDescription(
+  rawName: string,
+  durationKind: DurationKind | undefined,
+  warnings?: string[]
+): string {
+  const { baseType, shelf } = parseBaseTypeAndShelf(rawName);
+  const tmpl = FACTOR_DESCRIPTION_TEMPLATES[baseType];
+  if (!tmpl) {
+    if (warnings) {
+      warnings.push(
+        `No description template for factor type "${baseType}" (from group "${rawName}")`
+      );
+    }
+    return ""; // leave description empty for unknown types
+  }
+  return tmpl({ baseType, shelf, durationKind });
+}
+
+function buildDurationDescription(kind: DurationKind): string {
+  switch (kind) {
+    case "night":
+      return "Length of the night period";
+    case "dayAdapt":
+      return "Duration of the transition from night to day";
+    case "day":
+      return "Length of the day period";
+    case "nightAdapt":
+      return "Duration of the transition from day to night";
+    default:
+      return "";
+  }
+}
+
 function getGroupName(g: any, index: number): string {
   return g.name ?? g["group-name"] ?? `group-${index}`;
 }
@@ -497,10 +624,14 @@ function buildEnvironmentCsv(
 function buildFactorCsv(
   columns: MetadataColumn[],
   time: MetadataTime | null
-): string | null {
+): { csv: string | null; warnings: string[] } {
   const factorCols = columns.filter((c) => c.isFactor);
   const hasTimeFactor = time && time.isFactor && time.factorLevels > 1;
-  if (!factorCols.length && !hasTimeFactor) return null;
+  const warnings: string[] = [];
+
+  if (!factorCols.length && !hasTimeFactor) {
+    return { csv: null, warnings };
+  }
 
   const lines: string[] = [];
   lines.push("Experiment Factor type,Experiment Factor description,Experiment Factor values");
@@ -518,8 +649,9 @@ function buildFactorCsv(
       values.push(v);
     }
     const valuesStr = values.join(";");
-    const desc = `${col.groupName} level setpoint of growth chamber in this duration`;
     const typeLabel = withUnit(col.groupName);
+    // durationKind: "day" because we are using day plateau as the factor value
+    const desc = buildFactorDescription(col.groupName, "day", warnings);
     lines.push(`"${typeLabel}","${desc}","${valuesStr}"`);
   }
 
@@ -536,29 +668,33 @@ function buildFactorCsv(
       return vals.join(";");
     };
 
+    // Night duration
     lines.push(
-      `"${withUnit("Night duration")}","Night duration_description","${buildValues(
+      `"${withUnit("Night duration")}","${buildDurationDescription(
         "night"
-      )}"`
+      )}","${buildValues("night")}"`
     );
+    // Day adapt duration
     lines.push(
-      `"${withUnit("Day adapt duration")}","Day adapt duration_description","${buildValues(
+      `"${withUnit("Day adapt duration")}","${buildDurationDescription(
         "dayAdapt"
-      )}"`
+      )}","${buildValues("dayAdapt")}"`
     );
+    // Day duration
     lines.push(
-      `"${withUnit("Day duration")}","Day duration_description","${buildValues(
+      `"${withUnit("Day duration")}","${buildDurationDescription(
         "day"
-      )}"`
+      )}","${buildValues("day")}"`
     );
+    // Night adapt duration
     lines.push(
-      `"${withUnit("Night adapt duration")}","Night adapt duration_description","${buildValues(
+      `"${withUnit("Night adapt duration")}","${buildDurationDescription(
         "nightAdapt"
-      )}"`
+      )}","${buildValues("nightAdapt")}"`
     );
   }
 
-  return lines.join("\n");
+  return { csv: lines.join("\n"), warnings };
 }
 
 
@@ -842,7 +978,14 @@ function handleDownload() {
 
   // 4) Generate CSVs from the latest metadata
   const envCsv = buildEnvironmentCsv(cols, time);
-  const facCsv = buildFactorCsv(cols, time);
+  const { csv: facCsv, warnings: descWarnings } = buildFactorCsv(cols, time);
+
+  if (descWarnings.length) {
+    alert(
+      "Some experimental factor types have no description template. Their description fields will be empty:\n\n" +
+        descWarnings.join("\n")
+    );
+  }
 
   downloadText("environment.csv", envCsv);
   if (facCsv) {

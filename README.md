@@ -98,12 +98,14 @@ In MIAPPE,
 
 ### Usages
 - Click **Read current** to automatically parse current protocol from Editor (this will only work if the current protocol contains at least ramp-const-ramp-const structure, and the time period must match if there's multiple).
-- Click **Generate protocol** to translate this table into protocol, and load to Editor. 
+- Click **Generate protocol** to translate this table into protocol, and load to Editor.
+
 ⚠️Be careful that these 2 buttons will overwrite your current metadata table or current protocol in Editor.
 
 For each column (variable group),
 - Check **Constant** if the field will not change over time. 
-- Check **Exp. Factor** box if you are using this condition as a controlled variable. Adjust the Num of groups based on your experiment design (e.g. 3 if you have 3 temperature groups). 
+- Check **Exp. Factor** box if you are using this condition as a controlled variable. Adjust the Num of groups based on your experiment design (e.g. 3 if you have 3 temperature groups).
+
 ⚠️Note: when generating protocol with Exp. Factor fields, the first value will be used.
 
 After finish, click **Download csv** to get your Environment sheet (and Experimental Factor sheet, if exists.)
