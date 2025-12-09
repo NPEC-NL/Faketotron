@@ -85,6 +85,8 @@ For chambers that has 2 shelves, we calculate the leakge from high to low base o
 
 You can add the measurement files from `/Light Calibrations` to visualize the light curves by each channel. ![Visualization per channel](4.gif).
 
+In v2.1.1 and higher, you can downlaod the synthetic light curve (i.e. the current visualization) with the Download light curve beside the Add CSV button.
+
 
 ## Metadata Tab
 

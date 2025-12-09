@@ -148,6 +148,35 @@ function sumSpectraPerChannel(channelSets: { sets: SpectrumSet[]; pct: number }[
     .map(([wavelength, value]) => ({ wavelength, value }));
 }
 
+// New: Download
+function downloadSpectrumCSV(rows: SpectrumRow[], filename = "light-curve.csv") {
+  if (!rows || rows.length === 0) {
+    alert("No spectrum data available to download. Attach CSVs and add channels to the mix first.");
+    return;
+  }
+
+  // Build CSV text
+  const header = "wavelength,μE/m²/s/nm";
+  const body = rows
+    .map(r => `${r.wavelength},${r.value}`)
+    .join("\n");
+  const csv = `${header}\n${body}`;
+
+  // Create a Blob and trigger a download
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.setAttribute("download", filename);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+
+  URL.revokeObjectURL(url);
+}
+
+
 // ===== Pretty line color helper =====
 const VISIBLE_MIN = 380;
 const VISIBLE_MAX = 780;
@@ -207,6 +236,8 @@ function useDragList<T>(items: T[], onReorder: (next: T[]) => void) {
   }
   return { onDragStart, onDragOver, onDrop };
 }
+
+
 
 // ===== Main component =====
 export default function LightTools() {
@@ -676,7 +707,6 @@ export default function LightTools() {
             <input
               type="file"
               ref={fileInputRef}
-              /* remove `multiple` */
               onChange={(e) => {
                 const files = e.target.files;
                 if (files && files.length > 0) onCSVSelected(files);
@@ -686,11 +716,21 @@ export default function LightTools() {
               className="hidden"
             />
 
-            <button onClick={attachCSVPrompt} className="px-3 py-1.5 text-sm border rounded">
+            <button
+              onClick={attachCSVPrompt}
+              className="px-3 py-1.5 text-sm border rounded"
+            >
               Add CSV
             </button>
 
+            <button
+              onClick={() => downloadSpectrumCSV(combinedData, "light-curve.csv")}
+              className="px-3 py-1.5 text-sm border rounded"
+            >
+              Download light curve
+            </button>
           </div>
+
         </div>
 
         {activeChannels.length === 0 ? (
@@ -727,7 +767,7 @@ export default function LightTools() {
             {/* Integration controls */}
             <div className="flex flex-wrap items-center gap-3 text-sm">
               <div>
-                Total PPFD ≈ <b>{totalPPFD.toFixed(2)}</b>
+                Total PPFD based on built in A/b ≈ <b>{totalPPFD.toFixed(2)}.</b>
               </div>
               <div className="flex items-center gap-2">
                 <span>Integrate</span>
@@ -737,7 +777,7 @@ export default function LightTools() {
                 <span>nm</span>
               </div>
               <div>
-                Reference PAR {Math.min(nmMin, nmMax)}–{Math.max(nmMin, nmMax)} nm (∫ φ(λ) dλ): <b>{parIntegrated.toFixed(2)}</b> μE/m²/s
+                PAR (based on csv) {Math.min(nmMin, nmMax)}–{Math.max(nmMin, nmMax)} nm (∫ φ(λ) dλ): <b>{parIntegrated.toFixed(2)}</b> μE/m²/s
               </div>
             </div>
 
