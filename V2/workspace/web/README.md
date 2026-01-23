@@ -4,6 +4,23 @@ A mock Fytotron Client protocol editor and viewer (.Html, runs in the browser). 
 
 **Intended for:** NPEC operators and users
 
+## 📥 Download Resources (START HERE!)
+
+### ⭐ Main Resource Drive - **DOWNLOAD FIRST!**
+
+**Google Drive with all resources:**  
+🚀 **[https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO](https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO)**
+
+### 📦 What's included in the Drive:
+- ✓ **Example .fyt protocol files** (G4, G5, G6, G7, G8 and experimental variants)
+- ✓ **CSV template files** for importing time-series data
+- ✓ **PDF tutorial** with complete step-by-step instructions
+- ✓ **Sample experimental protocols** ready to use
+
+### For Advanced Users & Developers:
+- **GitHub Repository:** [https://github.com/NPEC-NL/Faketotron](https://github.com/NPEC-NL/Faketotron)
+- **Online Access:** [https://www.npec.nl/faketron.html](https://www.npec.nl/faketron.html)
+
 ## Credits & Version
 
 - **Made by:** Danna Shao and Maarten Bots
@@ -57,7 +74,14 @@ Protocols are built from phases that run in order. Common types:
 
 ## Quick Start (Recommended Workflow)
 
-Feel free to play around and load an example protocol to explore. Download example protocols: **G4, G5, G6, G7, G8** (including crazy experimental variants)
+### 📥 First Time? Download Example Files!
+
+**Before starting, visit the [Google Drive](https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO) to download:**
+- Example .fyt protocol files
+- CSV templates(download examples from the [Google Drive](https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO) first!)
+- **PDF tutorial** with detailed instructions
+
+Feel free to play around and load an example protocol to explore.
 
 ### Loading or Creating a Protocol
 

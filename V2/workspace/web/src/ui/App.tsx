@@ -9,6 +9,7 @@ import Welcome from "./Welcome";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 import npecLogo from "../assets/NPEC.png";
+import { LeafButton } from "../LeafButton";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
 type TabKey = "welcome" | "editor" | "graph" | "light" | "csv" | "inspector";
@@ -31,21 +32,24 @@ export default function App() {
   const lightRef  = useRef<HTMLDivElement>(null);
 
   const TabBtn = (k: TabKey, label: string) => (
-    <button
+    <LeafButton
       key={k}
-      className="btn"
       onClick={() => setTab(k)}
       style={{
-        padding: "6px 10px",
-        borderRadius: 8,
-        border: "1px solid #e5e7eb",
-        background: tab === k ? "#eef2ff" : "white",
-        fontWeight: tab === k ? 600 : 500,
+        filter: tab === k ? "drop-shadow(0 0 8px rgba(34, 197, 94, 0.6)) brightness(1.1)" : "brightness(0.95)",
+        transition: "all 0.3s ease",
+        transform: tab === k ? "scale(1.05)" : "scale(1)",
       }}
       aria-selected={tab === k}
     >
-      {label}
-    </button>
+      <span style={{
+        color: tab === k ? "#16a34a" : "#4b5563",
+        fontWeight: tab === k ? 700 : 600,
+        fontSize: "0.95rem",
+      }}>
+        {label}
+      </span>
+    </LeafButton>
   );
 
   return (

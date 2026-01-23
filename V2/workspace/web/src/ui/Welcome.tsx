@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import npecLogo from "../assets/NPEC.png";
+import { LeafButton } from "../LeafButton";
 
 type WelcomeTabKey = "about" | "tutorial" | "tabs" | "disclaimer";
 
@@ -6,28 +8,37 @@ export default function Welcome() {
   const [activeTab, setActiveTab] = useState<WelcomeTabKey>("about");
 
   const TabButton = ({ tabKey, label }: { tabKey: WelcomeTabKey; label: string }) => (
-    <button
+    <LeafButton
       onClick={() => setActiveTab(tabKey)}
-      className={`px-6 py-3 font-semibold text-sm transition-all duration-200 border-b-2 ${
-        activeTab === tabKey
-          ? "border-indigo-600 text-indigo-600"
-          : "border-transparent text-gray-600 hover:text-indigo-500 hover:border-gray-300"
-      }`}
+      style={{
+        filter: activeTab === tabKey ? "drop-shadow(0 0 10px rgba(34, 197, 94, 0.7)) brightness(1.15)" : "brightness(0.92)",
+        transition: "all 0.3s ease",
+        transform: activeTab === tabKey ? "scale(1.08)" : "scale(0.98)",
+      }}
     >
-      {label}
-    </button>
+      <span style={{
+        color: activeTab === tabKey ? "#16a34a" : "#6b7280",
+        fontWeight: activeTab === tabKey ? 700 : 600,
+        fontSize: "0.9rem",
+      }}>
+        {label}
+      </span>
+    </LeafButton>
   );
 
   return (
     <div className="max-w-6xl mx-auto p-8">
       {/* Header */}
-      <div className="text-center mb-8">
-        <h1 className="text-5xl font-bold text-gray-800 mb-3">
-          Welcome to <span className="text-indigo-600">Faketotron</span>
-        </h1>
-        <p className="text-xl text-gray-600">
-          A mock Fytotron Client protocol editor and viewer for Wageningen walk-in chambers G4-G8
-        </p>
+      <div className="flex items-center justify-center gap-8 mb-8">
+        <img src={npecLogo} alt="NPEC logo" className="h-40 w-auto" />
+        <div className="text-left">
+          <h1 className="text-5xl font-bold text-gray-800 mb-3">
+            Welcome to <span className="text-green-600">Faketotron</span>
+          </h1>
+          <p className="text-xl text-gray-600">
+            A mock Fytotron Client protocol editor and viewer for Wageningen walk-in chambers G4-G8
+          </p>
+        </div>
       </div>
 
       {/* Tab Navigation */}
@@ -50,7 +61,7 @@ export default function Welcome() {
                   <strong>Made by:</strong> Danna Shao and Maarten Bots
                 </p>
                 <p className="text-lg">
-                  <strong>Version:</strong> V1 (21-11-2025)
+                  <strong>Version:</strong> V3 (23-02-2026)
                 </p>
                 <p className="text-lg">
                   <strong>Developed by:</strong> Maarten Bots
@@ -62,22 +73,63 @@ export default function Welcome() {
             </div>
 
             <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
-              <h3 className="text-2xl font-semibold text-gray-800 mb-3">Example Protocols</h3>
+              <h3 className="text-2xl font-semibold text-gray-800 mb-3">Example Protocols Available</h3>
               <p className="text-gray-700 mb-2">
-                Included example protocols: <strong>G4, G5, G6, G7, G8</strong> (including crazy experimental variants)
+                Download from the <strong>Google Drive</strong> above: <strong>G4, G5, G6, G7, G8</strong> (including crazy experimental variants)
               </p>
               <p className="text-gray-600 italic">
                 Feel free to load these examples to explore the features and build your own protocols.
               </p>
             </div>
 
-            <div className="bg-green-50 p-6 rounded-lg border border-green-100">
-              <h3 className="text-2xl font-semibold text-gray-800 mb-3">Quick Access</h3>
-              <ul className="space-y-2 text-gray-700">
-                <li>• <strong>Instructions:</strong> See the User Guide tab or ReadMe</li>
-                <li>• <strong>Online Access:</strong> <a href="https://www.npec.nl/faketron.html" className="text-indigo-600 hover:underline">https://www.npec.nl/faketron.html</a></li>
-                <li>• <strong>Intended for:</strong> NPEC operators and users</li>
-              </ul>
+            <div className="bg-gradient-to-br from-green-100 via-emerald-50 to-teal-50 p-8 rounded-xl border-2 border-green-400 shadow-lg">
+              <div className="flex items-center gap-3 mb-4">
+                <h3 className="text-3xl font-bold text-gray-800">Download Resources</h3>
+              </div>
+              <div className="bg-white p-6 rounded-lg shadow-md border-2 border-green-300 mb-4">
+                <div className="flex items-start gap-3 mb-3">
+                  <div className="flex-1">
+                    <h4 className="text-xl font-bold text-green-800 mb-2">Main Resource Drive (START HERE!)</h4>
+                    <p className="text-gray-700 mb-3 font-semibold">
+                      Download example protocols, CSV files, and PDF tutorial:
+                    </p>
+                    <a 
+                      href="https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO" 
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-block bg-green-600 hover:bg-green-700 text-white font-bold py-3 px-6 rounded-lg transition-all duration-200 shadow-md hover:shadow-xl text-lg"
+                    >
+                      🚀 Open Google Drive Resources
+                    </a>
+                    <div className="mt-4 bg-green-50 p-4 rounded border border-green-200">
+                      <p className="font-semibold text-green-900 mb-2">What's included in the Drive:</p>
+                      <ul className="space-y-1 text-gray-700 ml-4">
+                        <li>✓ <strong>Example .fyt protocol files</strong> (G4, G5, G6, G7, G8)</li>
+                        <li>✓ <strong>CSV template files</strong> for importing time-series data</li>
+                        <li>✓ <strong>PDF tutorial</strong> with step-by-step instructions</li>
+                        <li>✓ <strong>Sample experimental protocols</strong></li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 p-4 rounded-lg border border-gray-300">
+                <p className="text-sm text-gray-600 mb-2">
+                  <strong>For Advanced Users & Developers:</strong>
+                </p>
+                <ul className="space-y-1 text-sm text-gray-600">
+                  <li>• <strong>GitHub Repository:</strong> <a href="https://github.com/NPEC-NL/Faketotron" className="text-indigo-600 hover:underline" target="_blank" rel="noopener noreferrer">https://github.com/NPEC-NL/Faketotron</a></li>
+                  <li>• <strong>Online Access:</strong> <a href="https://www.npec.nl/faketron.html" className="text-indigo-600 hover:underline" target="_blank" rel="noopener noreferrer">https://www.npec.nl/faketron.html</a></li>
+                </ul>
+              </div>
+            </div>
+            
+            <div className="bg-blue-50 p-6 rounded-lg border border-blue-100">
+              <h3 className="text-2xl font-semibold text-gray-800 mb-3">Intended For</h3>
+              <p className="text-gray-700 text-lg">
+                NPEC operators and users working with Wageningen walk-in chambers
+              </p>
             </div>
           </div>
         )}
@@ -160,12 +212,29 @@ export default function Welcome() {
               </div>
             </section>
 
+            <div className="bg-gradient-to-r from-yellow-50 to-amber-50 p-6 rounded-lg border-2 border-yellow-300 mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <h3 className="text-2xl font-bold text-gray-800">Need Help? Download the PDF Tutorial!</h3>
+              </div>
+              <p className="text-gray-700 mb-3">
+                A complete step-by-step PDF tutorial is available in the <strong>Google Drive</strong> (link above). 
+                Perfect for first-time users!
+              </p>
+            </div>
+
             <section className="bg-green-50 p-6 rounded-lg border border-green-100">
               <h3 className="text-2xl font-semibold text-gray-800 mb-3">Quick Start (Recommended Workflow)</h3>
               
+              <div className="bg-white p-4 rounded-lg border border-green-200 mb-4">
+                <p className="font-bold text-green-800 mb-2">First Time? Download Example Files:</p>
+                <p className="text-gray-700">
+                  Visit the <a href="https://drive.google.com/drive/u/1/folders/1gZKerfe52QwXIYPSa2mCQGP49loRlIfO" className="text-green-600 hover:underline font-semibold" target="_blank" rel="noopener noreferrer">Google Drive</a> to download example .fyt protocols and the PDF tutorial before starting!
+                </p>
+              </div>
+              
               <h4 className="font-bold text-gray-800 mt-4 mb-2">Loading or Creating a Protocol:</h4>
               <ul className="space-y-1 ml-4">
-                <li>• <strong>Load protocol:</strong> Choose "Load" and select a .fyt file to tweak an existing standard protocol</li>
+                <li>• <strong>Load protocol:</strong> Choose "Load" and select a .fyt file (download examples from Drive first!)</li>
                 <li>• <strong>New protocol:</strong> Choose "New" in the protocol panel</li>
               </ul>
 
@@ -197,7 +266,7 @@ export default function Welcome() {
             
             <div className="grid gap-6">
               <div className="bg-indigo-50 p-6 rounded-lg border-l-4 border-indigo-500">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">📝 Editor Tab</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Editor Tab</h3>
                 <p className="text-gray-700">
                   The main protocol editor interface. Here you can create, edit, and manage your protocol phases. 
                   Add groups, define phases (constant, ramp, sine, cloud), set durations, and arrange the sequence 
@@ -206,7 +275,7 @@ export default function Welcome() {
               </div>
 
               <div className="bg-purple-50 p-6 rounded-lg border-l-4 border-purple-500">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">📊 Graph Tab</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Graph Tab</h3>
                 <p className="text-gray-700">
                   Visualize your protocol over time. See all your variables (temperature, light, humidity, etc.) 
                   plotted on interactive graphs. This helps you spot inconsistencies, verify ramps and transitions, 
@@ -215,7 +284,7 @@ export default function Welcome() {
               </div>
 
               <div className="bg-yellow-50 p-6 rounded-lg border-l-4 border-yellow-500">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">💡 Light Tools Tab</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">Light Tools Tab</h3>
                 <p className="text-gray-700">
                   Advanced light spectrum management. Fine-tune individual light channels (Cool White, Warm White, 
                   Deep Red, Far Red, UVB, etc.). Calculate PPFD values, manage light ratios, and ensure your 
@@ -224,7 +293,7 @@ export default function Welcome() {
               </div>
 
               <div className="bg-green-50 p-6 rounded-lg border-l-4 border-green-500">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">📄 CSV Tab</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">CSV Tab</h3>
                 <p className="text-gray-700">
                   Import time-series data from CSV files with second-level resolution. Paste imported data over 
                   existing phases to create complex, data-driven protocols. Useful for replicating real-world 
@@ -233,7 +302,7 @@ export default function Welcome() {
               </div>
 
               <div className="bg-blue-50 p-6 rounded-lg border-l-4 border-blue-500">
-                <h3 className="text-xl font-bold text-gray-800 mb-2">🔍 FYT Inspector Tab (Hidden)</h3>
+                <h3 className="text-xl font-bold text-gray-800 mb-2">FYT Inspector Tab (Hidden)</h3>
                 <p className="text-gray-700 italic">
                   This tab is intentionally hidden but kept for future debugging purposes. It allows inspection 
                   of the raw .fyt file structure and binary data for advanced troubleshooting.
@@ -242,7 +311,7 @@ export default function Welcome() {
             </div>
 
             <div className="bg-gradient-to-r from-blue-50 to-indigo-50 p-6 rounded-lg border border-indigo-200 mt-6">
-              <h3 className="text-xl font-bold text-gray-800 mb-3">💡 Pro Tips</h3>
+              <h3 className="text-xl font-bold text-gray-800 mb-3">Pro Tips</h3>
               <ul className="space-y-2 text-gray-700">
                 <li>• Start with the <strong>Editor</strong> to build your protocol structure</li>
                 <li>• Switch to the <strong>Graph</strong> frequently to validate your design</li>
@@ -288,7 +357,7 @@ export default function Welcome() {
 
                 <div className="bg-yellow-50 p-4 rounded border border-yellow-300 mt-4">
                   <p className="font-semibold text-yellow-900">
-                    📚 For a brief tutorial and proper usage guidelines, please refer to the ReadMe or the User Guide tab.
+                    For a brief tutorial and proper usage guidelines, please refer to the ReadMe or the User Guide tab.
                   </p>
                 </div>
               </div>
