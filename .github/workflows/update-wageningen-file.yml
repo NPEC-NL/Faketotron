@@ -5,11 +5,11 @@ on:
   push:
     branches:
       - 'Wageningen-*'
-      - 'NPEC-WU'
+      - 'NPEC-WU*'
   pull_request:
     branches:
       - 'Wageningen-*'
-      - 'NPEC-WU'
+      - 'NPEC-WU*'
 
 permissions:
   contents: write
