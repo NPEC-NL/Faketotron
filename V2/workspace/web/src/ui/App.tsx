@@ -43,7 +43,7 @@ export default function App() {
       aria-selected={tab === k}
     >
       <span style={{
-        color: tab === k ? "#16a34a" : "#4b5563",
+        color: tab === k ? "#16a34a" : "#000000",
         fontWeight: tab === k ? 700 : 600,
         fontSize: "0.95rem",
       }}>

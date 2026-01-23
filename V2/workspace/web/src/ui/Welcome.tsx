@@ -17,7 +17,7 @@ export default function Welcome() {
       }}
     >
       <span style={{
-        color: activeTab === tabKey ? "#16a34a" : "#6b7280",
+        color: activeTab === tabKey ? "#16a34a" : "#000000",
         fontWeight: activeTab === tabKey ? 700 : 600,
         fontSize: "0.9rem",
       }}>
@@ -89,7 +89,7 @@ export default function Welcome() {
               <div className="bg-white p-6 rounded-lg shadow-md border-2 border-green-300 mb-4">
                 <div className="flex items-start gap-3 mb-3">
                   <div className="flex-1">
-                    <h4 className="text-xl font-bold text-green-800 mb-2">Main Resource Drive (START HERE!)</h4>
+                    <h4 className="text-xl font-bold text-green-800 mb-2">Main Resource Drive</h4>
                     <p className="text-gray-700 mb-3 font-semibold">
                       Download example protocols, CSV files, and PDF tutorial:
                     </p>
