@@ -5,15 +5,16 @@ import GraphTab from "./GraphTab";
 import LightTools from "./LightTools";
 import CsvTab from "./CsvTab";
 import FytInspector from "./FytInspector";
+import Welcome from "./Welcome";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 import npecLogo from "../assets/NPEC.png";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "editor" | "graph" | "light" | "csv" | "inspector";
+type TabKey = "welcome" | "editor" | "graph" | "light" | "csv" | "inspector";
 
 export default function App() {
-  const [tab, setTab] = useState<TabKey>("editor");
+  const [tab, setTab] = useState<TabKey>("welcome");
 
   const profile   = useStoreAny((s: any) => s.profile);
   const protocol  = useStoreAny((s: any) => s.protocol);
@@ -50,6 +51,7 @@ export default function App() {
   return (
     <div className="wrap">
       <div style={{ display: "flex", gap: 8, padding: 8, marginBottom: 12 }}>
+        {TabBtn("welcome", "Welcome")}
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
@@ -59,6 +61,10 @@ export default function App() {
             <img src={npecLogo} alt="NPEC logo" className="h-24 w-auto" />
             <span className="font-semibold text-slate-700 text-2xl tracking-wide">NPEC Faketron</span>
           </div>
+      </div>
+
+      <div style={{ display: tab === "welcome" ? "block" : "none" }}>
+        <Welcome />
       </div>
 
       <div
