@@ -1,0 +1,44 @@
+.leaf-btn {
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  transition: transform 0.1s ease;
+}
+
+.leaf-btn:hover {
+  transform: scale(1.05);
+}
+
+.leaf-btn:active {
+  transform: scale(0.95);
+}
+
+/* Base leaf image */
+.leaf-img {
+  display: block;
+}
+
+/* Falling animation */
+.leaf-fall {
+  animation: leaf-fall 900ms ease-in forwards;
+}
+
+@keyframes leaf-fall {
+  0% {
+    transform: translateY(0) scale(1) rotate(0deg);
+    opacity: 1;
+  }
+  50% {
+    transform: translateY(100px) scale(0.5) rotate(12deg);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translateY(200px) scale(0.2) rotate(25deg);
+    opacity: 0.6;
+  }
+}
