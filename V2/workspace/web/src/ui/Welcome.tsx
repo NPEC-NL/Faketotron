@@ -63,9 +63,6 @@ export default function Welcome() {
                 <p className="text-lg">
                   <strong>Version:</strong> V3 (23-02-2026)
                 </p>
-                <p className="text-lg">
-                  <strong>Developed by:</strong> Maarten Bots
-                </p>
               </div>
             </div>
 
