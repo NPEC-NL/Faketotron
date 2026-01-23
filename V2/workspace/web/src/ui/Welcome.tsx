@@ -66,9 +66,6 @@ export default function Welcome() {
                 <p className="text-lg">
                   <strong>Developed by:</strong> Maarten Bots
                 </p>
-                <p className="text-lg">
-                  <strong>With instructions from:</strong> Sofia Bengoa Luoni, Alan Pauls, and Rick van de Zedde
-                </p>
               </div>
             </div>
 
