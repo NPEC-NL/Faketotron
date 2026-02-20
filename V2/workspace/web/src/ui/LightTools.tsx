@@ -458,7 +458,7 @@ export default function LightTools() {
   const [slFR, setSlFR] = useState(50);
 
   const ROOM_CALIBRATIONS: Record<string, string | null> = {
-    G4: "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ62hGE1KYYZa4tK0REybcP4Bhtb3NJ5NEsnDxiXdjlbr3nKKwqQY1obvZ7OGGTzg/pub?gid=194264987&single=true&output=csv",
+    G4: "/calibration/G4_lamps.csv",
     G5: null,
     G6: null,
     G7: null,
