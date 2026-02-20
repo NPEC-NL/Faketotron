@@ -910,7 +910,7 @@ function buildPhaseFields(varType,phType){
            phType==='cloud'?{amplitude:midVal,offset:0,cloud_density:0,cloud_position:0,cloud_duration_mean:60,cloud_duration_var:5,fluctuation_mean_ratio:0.15,fluctuation_var:10,cloud_drop_coeff:0.5,duration:baseDur}:
            {value:midVal,duration:baseDur});
   if(phType==='const'){
-    wrap.innerHTML=`<div class="grid2">${f('Value', 'phVal', d.value)}${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}</div>` + hint(`Range ${range.min}–${range.max}${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}`);
+    wrap.innerHTML=`<div class="grid2">${f('Value', 'phVal', '')}${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}</div>` + hint(`Range ${range.min}–${range.max}${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}`);
   }else if(phType==='ramp'){
     wrap.innerHTML=`<div class="grid2">${f('Start', 'phStart', d.start)}${f('End', 'phEnd', d.end)}${f('Duration', 'phDur', d.duration, 'D.HH:MM:SS')}${f('Step (fixed)', 'phStep', RAMP_STEP, 'D.HH:MM:SS')}</div>` + hint(`Range ${range.min}–${range.max}${varType==='Temperature'?' (allow 0.1 steps; stored ×10)':''}`);
   }else if(phType==='sin'){
