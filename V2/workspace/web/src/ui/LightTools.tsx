@@ -485,23 +485,6 @@ export default function LightTools() {
       });
   }
 
-  function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setLampCalFile(file.name);
-    setLampCalError("");
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        setLampCal(parseLampCalibrationCsv(reader.result as string));
-      } catch (err: any) {
-        setLampCalError(err.message ?? "Parse error");
-        setLampCal(null);
-      }
-    };
-    reader.readAsText(file);
-  }
-
   function onJetiRefFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -691,11 +674,6 @@ export default function LightTools() {
               </div>
             )}
             {lampCalError && <div className="text-xs text-red-600">Error: {lampCalError}</div>}
-            <details className="text-xs text-slate-400">
-              <summary className="cursor-pointer">Load from file instead</summary>
-              <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="mt-1 text-sm" />
-              {lampCalFile && !lampCalLoading && <div className="text-slate-500 mt-1">{lampCalFile}</div>}
-            </details>
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium">Jeti Reference Spectrum (optional)</label>
