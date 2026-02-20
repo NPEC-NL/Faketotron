@@ -291,15 +291,33 @@ function parseJetiSpectrumCsv(text: string): SpectrumPoint[] {
   return pts;
 }
 
-/** Interpolated spectrum for a given channel at a given percent (0–100). */
+/**
+ * Interpolated spectrum for a given channel at any percent 0–100.
+ * Measured data is at 5 % steps (index 0 = 5 %, …, 19 = 100 %).
+ * Between measured points: linear interpolation.
+ * Below 5 %: extrapolate from the 5 %→10 % slope (clamping Ee ≥ 0).
+ */
 function spectrumAtPercent(spectra: SpectrumPoint[][], pct: number): SpectrumPoint[] {
   if (pct <= 0) return spectra[0].map((p) => ({ nm: p.nm, ee: 0 }));
   if (pct >= 100) return spectra[19];
-  // Map: 5% → idx 0, 10% → 1, …, 100% → 19
-  const idx = pct / 5 - 1;
+
+  // Map: 5 % → idx 0, 10 % → idx 1, …, 100 % → idx 19
+  const idx = pct / 5 - 1; // e.g. 6 % → 0.2, 3 % → −0.4
+
+  if (idx < 0) {
+    // Extrapolate below 5 % using slope between 5 % (idx 0) and 10 % (idx 1)
+    // At pct=5 we want spectra[0]; per 1 % the change is (spectra[1]–spectra[0])/5
+    const perOne = (val1: number, val0: number) => (val1 - val0) / 5;
+    const stepsBelow = 5 - pct; // how many % below 5
+    return spectra[0].map((p, i) => ({
+      nm: p.nm,
+      ee: Math.max(0, p.ee - perOne(spectra[1][i]?.ee ?? 0, p.ee) * stepsBelow),
+    }));
+  }
+
   const lo = Math.floor(idx);
   const hi = Math.ceil(idx);
-  if (lo === hi || lo < 0) return spectra[Math.max(0, Math.min(19, Math.round(idx)))];
+  if (lo === hi) return spectra[lo];
   const t = idx - lo;
   return spectra[lo].map((p, i) => ({
     nm: p.nm,
@@ -726,7 +744,7 @@ export default function LightTools() {
         {/* Channel intensity sliders (5 % steps) */}
         {lampCal && (
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
-            <label className="block text-sm font-medium">Channel Intensities (5 % steps)</label>
+            <label className="block text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
             {[
               { label: "Cool White", value: slCW, set: setSlCW, color: CHANNEL_COLORS.coolWhite },
               { label: "Deep Red",   value: slDR, set: setSlDR, color: CHANNEL_COLORS.deepRed },
@@ -735,12 +753,18 @@ export default function LightTools() {
               <div key={label} className="flex items-center gap-3">
                 <div className="w-28 text-sm font-medium" style={{ color }}>{label}</div>
                 <input
-                  type="range" min={0} max={100} step={5}
+                  type="range" min={0} max={100} step={1}
                   value={value}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(parseInt(e.target.value, 10))}
                   className="w-full"
                 />
-                <span className="w-12 text-sm text-right font-mono">{value}%</span>
+                <input
+                  type="number" min={0} max={100}
+                  value={value}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(clamp(parseInt(e.target.value || "0", 10)))}
+                  className="w-16 border rounded p-1 text-sm text-right font-mono"
+                />
+                <span className="text-sm">%</span>
               </div>
             ))}
           </div>
