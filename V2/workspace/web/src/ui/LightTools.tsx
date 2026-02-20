@@ -228,6 +228,101 @@ function clamp(x: number, lo = 0, hi = 100) {
 
 // (unused legacy helpers removed)
 
+// ===== Spectrum Lab types & helpers =====
+type SpectrumPoint = { nm: number; ee: number };
+
+type LampCalibrationData = {
+  coolWhite: SpectrumPoint[][]; // 20 spectra: index 0→5%, 1→10%, …, 19→100%
+  deepRed: SpectrumPoint[][];
+  farRed: SpectrumPoint[][];
+};
+
+/** Parse a Jeti multi-measurement CSV (e.g. G4_5%_increments_3_lamps.csv). */
+function parseLampCalibrationCsv(text: string): LampCalibrationData {
+  const lines = text.split(/\r?\n/);
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("Wavelength [nm]")) { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) throw new Error("Header 'Wavelength [nm]' not found");
+
+  const coolWhite: SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
+  const deepRed:   SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
+  const farRed:    SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split(";");
+    if (parts.length < 61) continue;
+    const nm = parseInt(parts[0], 10);
+    if (isNaN(nm)) continue;
+    for (let j = 0; j < 20; j++) {
+      const cw = parseFloat(parts[1 + j].replace(",", "."));
+      const dr = parseFloat(parts[21 + j].replace(",", "."));
+      const fr = parseFloat(parts[41 + j].replace(",", "."));
+      coolWhite[j].push({ nm, ee: isNaN(cw) ? 0 : cw });
+      deepRed[j].push({  nm, ee: isNaN(dr) ? 0 : dr });
+      farRed[j].push({   nm, ee: isNaN(fr) ? 0 : fr });
+    }
+  }
+  return { coolWhite, deepRed, farRed };
+}
+
+/** Parse a single Jeti measurement CSV (first Ee column only). */
+function parseJetiSpectrumCsv(text: string): SpectrumPoint[] {
+  const lines = text.split(/\r?\n/);
+  let headerIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i].startsWith("Wavelength [nm]")) { headerIdx = i; break; }
+  }
+  if (headerIdx < 0) throw new Error("Header 'Wavelength [nm]' not found");
+  const pts: SpectrumPoint[] = [];
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const parts = line.split(";");
+    if (parts.length < 2) continue;
+    const nm = parseFloat(parts[0].replace(",", "."));
+    const ee = parseFloat(parts[1].replace(",", "."));
+    if (!isNaN(nm) && !isNaN(ee)) pts.push({ nm, ee });
+  }
+  if (!pts.length) throw new Error("No spectral data found after header");
+  return pts;
+}
+
+/** Interpolated spectrum for a given channel at a given percent (0–100). */
+function spectrumAtPercent(spectra: SpectrumPoint[][], pct: number): SpectrumPoint[] {
+  if (pct <= 0) return spectra[0].map((p) => ({ nm: p.nm, ee: 0 }));
+  if (pct >= 100) return spectra[19];
+  // Map: 5% → idx 0, 10% → 1, …, 100% → 19
+  const idx = pct / 5 - 1;
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  if (lo === hi || lo < 0) return spectra[Math.max(0, Math.min(19, Math.round(idx)))];
+  const t = idx - lo;
+  return spectra[lo].map((p, i) => ({
+    nm: p.nm,
+    ee: p.ee * (1 - t) + (spectra[hi][i]?.ee ?? 0) * t,
+  }));
+}
+
+/** Sum three channel spectra at given percentages into one combined spectrum. */
+function reconstructSpectrum(
+  cal: LampCalibrationData,
+  cwPct: number,
+  drPct: number,
+  frPct: number,
+): SpectrumPoint[] {
+  const cw = spectrumAtPercent(cal.coolWhite, cwPct);
+  const dr = spectrumAtPercent(cal.deepRed, drPct);
+  const fr = spectrumAtPercent(cal.farRed, frPct);
+  return cw.map((p, i) => ({
+    nm: p.nm,
+    ee: p.ee + (dr[i]?.ee ?? 0) + (fr[i]?.ee ?? 0),
+  }));
+}
+
 // ===== Main component =====
 export default function LightTools() {
   const [presets, setPresets] = useState<Preset[]>(loadInitialPresets);
@@ -330,6 +425,77 @@ export default function LightTools() {
       return { name: ch, ppfd: Math.max(0, A * pct + b), color: colorFor(ch) };
     });
   }, [preset, JSON.stringify(perChannelPercent)]);
+
+  // ===== Spectrum Lab state =====
+  const [lampCal, setLampCal] = useState<LampCalibrationData | null>(null);
+  const [lampCalFile, setLampCalFile] = useState("");
+  const [lampCalError, setLampCalError] = useState("");
+  const [jetiRef, setJetiRef] = useState<SpectrumPoint[]>([]);
+  const [jetiRefFile, setJetiRefFile] = useState("");
+  const [jetiRefError, setJetiRefError] = useState("");
+  const [slCW, setSlCW] = useState(50);
+  const [slDR, setSlDR] = useState(50);
+  const [slFR, setSlFR] = useState(50);
+
+  function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLampCalFile(file.name);
+    setLampCalError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        setLampCal(parseLampCalibrationCsv(reader.result as string));
+      } catch (err: any) {
+        setLampCalError(err.message ?? "Parse error");
+        setLampCal(null);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function onJetiRefFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setJetiRefFile(file.name);
+    setJetiRefError("");
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        setJetiRef(parseJetiSpectrumCsv(reader.result as string));
+      } catch (err: any) {
+        setJetiRefError(err.message ?? "Parse error");
+        setJetiRef([]);
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  const reconstructed = useMemo(() => {
+    if (!lampCal) return [] as SpectrumPoint[];
+    return reconstructSpectrum(lampCal, slCW, slDR, slFR);
+  }, [lampCal, slCW, slDR, slFR]);
+
+  const overlayData = useMemo(() => {
+    if (!reconstructed.length && !jetiRef.length) return [];
+    const map = new Map<number, { nm: number; reconstructed?: number; measured?: number }>();
+    for (const pt of reconstructed) map.set(pt.nm, { nm: pt.nm, reconstructed: pt.ee });
+    for (const pt of jetiRef) {
+      const existing = map.get(pt.nm);
+      if (existing) existing.measured = pt.ee;
+      else map.set(pt.nm, { nm: pt.nm, measured: pt.ee });
+    }
+    return Array.from(map.values()).sort((a, b) => a.nm - b.nm);
+  }, [reconstructed, jetiRef]);
+
+  const channelSpectra = useMemo(() => {
+    if (!lampCal) return { cw: [] as SpectrumPoint[], dr: [] as SpectrumPoint[], fr: [] as SpectrumPoint[] };
+    return {
+      cw: spectrumAtPercent(lampCal.coolWhite, slCW),
+      dr: spectrumAtPercent(lampCal.deepRed, slDR),
+      fr: spectrumAtPercent(lampCal.farRed, slFR),
+    };
+  }, [lampCal, slCW, slDR, slFR]);
 
   // ===== Render =====
   return (
@@ -521,6 +687,127 @@ export default function LightTools() {
           </div>
         )}
         <div className="text-xs text-slate-500 mt-2">Note: This is not a true SPD; it shows relative PPFD per channel at current settings.</div>
+      </div>
+
+      {/* ===== Spectrum Lab ===== */}
+      <div className="border-t-2 border-purple-300 pt-5 mt-6 space-y-4">
+        <h2 className="text-lg font-bold text-purple-900">Spectrum Lab — Reconstruct &amp; Compare</h2>
+        <p className="text-sm text-slate-600">
+          Load the lamp calibration CSV (e.g.{" "}
+          <code className="bg-slate-100 px-1 rounded">G4_5%_increments_3_lamps.csv</code>) to
+          reconstruct spectra from channel intensities. Optionally load a Jeti measurement to
+          overlay for comparison.
+        </p>
+
+        {/* File pickers */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <label className="block text-sm font-medium">Lamp Calibration CSV (3 lamps × 20 levels)</label>
+            <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
+            {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
+            {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
+            {lampCal && (
+              <div className="text-xs text-green-700">
+                ✓ Loaded ({lampCal.coolWhite[0]?.length ?? 0} wavelengths, 3 channels × 20 levels)
+              </div>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="block text-sm font-medium">Jeti Reference Spectrum (optional)</label>
+            <input type="file" accept=".csv" onChange={onJetiRefFileChosen} className="text-sm" />
+            {jetiRefFile && <div className="text-xs text-slate-500">{jetiRefFile}</div>}
+            {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
+            {jetiRef.length > 0 && (
+              <div className="text-xs text-green-700">✓ {jetiRef.length} points loaded</div>
+            )}
+          </div>
+        </div>
+
+        {/* Channel intensity sliders (5 % steps) */}
+        {lampCal && (
+          <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
+            <label className="block text-sm font-medium">Channel Intensities (5 % steps)</label>
+            {[
+              { label: "Cool White", value: slCW, set: setSlCW, color: CHANNEL_COLORS.coolWhite },
+              { label: "Deep Red",   value: slDR, set: setSlDR, color: CHANNEL_COLORS.deepRed },
+              { label: "Far Red",    value: slFR, set: setSlFR, color: CHANNEL_COLORS.farRed },
+            ].map(({ label, value, set, color }) => (
+              <div key={label} className="flex items-center gap-3">
+                <div className="w-28 text-sm font-medium" style={{ color }}>{label}</div>
+                <input
+                  type="range" min={0} max={100} step={5}
+                  value={value}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(parseInt(e.target.value, 10))}
+                  className="w-full"
+                />
+                <span className="w-12 text-sm text-right font-mono">{value}%</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Overlay chart: reconstructed vs measured */}
+        {overlayData.length > 0 && (
+          <div className="border rounded-lg p-3">
+            <div className="font-medium">Spectrum Overlay — Reconstructed vs Measured</div>
+            <div className="h-80 w-full mt-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={overlayData} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="nm" type="number" domain={["dataMin", "dataMax"]}
+                    label={{ value: "Wavelength (nm)", position: "insideBottomRight", offset: -5 }}
+                  />
+                  <YAxis label={{ value: "Ee [W/(m²·nm)]", angle: -90, position: "insideLeft" }} />
+                  <Tooltip
+                    labelFormatter={(nm: number) => `${nm} nm`}
+                    formatter={(v: any, name: string) => [(v as number).toExponential(3), name]}
+                  />
+                  <Legend />
+                  {reconstructed.length > 0 && (
+                    <Line dataKey="reconstructed" name="Reconstructed" stroke="#8b5cf6"
+                      dot={false} strokeWidth={2} type="monotone" />
+                  )}
+                  {jetiRef.length > 0 && (
+                    <Line dataKey="measured" name="Measured (Jeti)" stroke="#f59e0b"
+                      dot={false} strokeWidth={1.5} strokeDasharray="4 2" type="monotone"
+                      connectNulls />
+                  )}
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
+
+        {/* Individual channel spectra */}
+        {lampCal && reconstructed.length > 0 && (
+          <div className="border rounded-lg p-3">
+            <div className="font-medium">Individual Channel Spectra</div>
+            <div className="h-64 w-full mt-3">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis
+                    dataKey="nm" type="number" domain={["dataMin", "dataMax"]}
+                    label={{ value: "Wavelength (nm)", position: "insideBottomRight", offset: -5 }}
+                  />
+                  <YAxis label={{ value: "Ee [W/(m²·nm)]", angle: -90, position: "insideLeft" }} />
+                  <Tooltip
+                    labelFormatter={(nm: number) => `${nm} nm`}
+                    formatter={(v: any, name: string) => [(v as number).toExponential(3), name]}
+                  />
+                  <Legend />
+                  <Line data={channelSpectra.cw} dataKey="ee" name={`Cool White ${slCW}%`}
+                    stroke={CHANNEL_COLORS.coolWhite} dot={false} type="monotone" strokeWidth={1.5} />
+                  <Line data={channelSpectra.dr} dataKey="ee" name={`Deep Red ${slDR}%`}
+                    stroke={CHANNEL_COLORS.deepRed} dot={false} type="monotone" strokeWidth={1.5} />
+                  <Line data={channelSpectra.fr} dataKey="ee" name={`Far Red ${slFR}%`}
+                    stroke={CHANNEL_COLORS.farRed} dot={false} type="monotone" strokeWidth={1.5} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
