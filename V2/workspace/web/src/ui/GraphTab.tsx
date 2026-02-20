@@ -85,6 +85,16 @@ function niceCeil(y: number): number {
   const unit = mag / 2;
   return Math.ceil(y / unit) * unit;
 }
+/** Mirror of niceCeil for negative values. Returns 0 when y >= 0. */
+function niceFloor(y: number): number {
+  if (y >= 0) return 0;
+  // Add 15 % breathing room so the line isn’t flush with the axis edge.
+  const padded = y * 1.15;
+  const abs = Math.abs(padded);
+  const mag = Math.pow(10, Math.floor(Math.log10(Math.max(abs, 1e-9))));
+  const unit = Math.max(mag / 2, 1);
+  return Math.floor(padded / unit) * unit;
+}
 
 /* ───────────── Draft overlay & editors ───────────── */
 
@@ -291,13 +301,15 @@ export default function GraphTab() {
   const frozenYRangeRef = useRef<{ ymin: number; ymax: number; span: number } | null>(null);
   useEffect(() => {
     let ymaxScaled = 0;
+    let yminScaled = 0;
     rows.forEach(r => {
       r.series.forEach(p => {
         const ys = scaleYByName(r.name, p.y);
         if (ys > ymaxScaled) ymaxScaled = ys;
+        if (ys < yminScaled) yminScaled = ys;
       });
     });
-    const ymin = 0;
+    const ymin = niceFloor(yminScaled);
     const ymax = niceCeil(ymaxScaled);
     const span = Math.max(1, ymax - ymin);
     frozenYRangeRef.current = { ymin, ymax, span };
@@ -513,6 +525,10 @@ function MyButtons({ setDrafts, saveDraftsToEditor }) {
           {/* Axes */}
           <line x1={LEFT} y1={TOP} x2={LEFT} y2={TOP + PLOT_H} stroke="#e5e7eb" />
           <line x1={LEFT} y1={TOP + PLOT_H} x2={LEFT + PLOT_W} y2={TOP + PLOT_H} stroke="#e5e7eb" />
+          {/* Zero baseline (only visible when ymin < 0) */}
+          {yRange.ymin < 0 && (
+            <line x1={LEFT} y1={mapY(0)} x2={LEFT + PLOT_W} y2={mapY(0)} stroke="#d1d5db" strokeDasharray="4 2" />
+          )}
 
           {/* X ticks */}
           {xTicks.map((t, i) => {
@@ -528,8 +544,11 @@ function MyButtons({ setDrafts, saveDraftsToEditor }) {
             );
           })}
 
-          {/* Y ticks: 0, mid, max (frozen) */}
-          {[yRange.ymin, yRange.ymin + yRange.span / 2, yRange.ymax].map((v, i) => {
+          {/* Y ticks */}
+          {(yRange.ymin < 0
+            ? [yRange.ymin, 0, yRange.ymax]          // negative range: min / zero / max
+            : [yRange.ymin, yRange.ymin + yRange.span / 2, yRange.ymax] // normal: min / mid / max
+          ).map((v, i) => {
             const y = mapY(v);
             return (
               <g key={i}>

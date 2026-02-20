@@ -7,10 +7,10 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 
 
-METRIC_ROW = "Ephot (Begin..End) [umol/s sqm]"
 LAMP_NAMES = ("Cool White", "Deep Red", "Far Red")
 STEPS_PER_LAMP = 20
 DIMMING_STEPS = [i * 5 for i in range(1, STEPS_PER_LAMP + 1)]
+SPECTRAL_HEADER = "Wavelength [nm]"
 
 
 def parse_number(token: str) -> float:
@@ -25,79 +25,114 @@ def parse_number(token: str) -> float:
     return float(cleaned)
 
 
-def read_metric_values(csv_path: Path, metric_row_name: str = METRIC_ROW) -> list[float]:
+def read_csv_rows(csv_path: Path) -> tuple[list[list[str]], str]:
     encodings_to_try = ("utf-8-sig", "cp1252")
 
     for encoding in encodings_to_try:
         try:
             with csv_path.open("r", encoding=encoding, newline="") as handle:
-                reader = csv.reader(handle, delimiter=";")
-                for row in reader:
-                    if not row:
-                        continue
-                    header = row[0].strip()
-                    if header != metric_row_name:
-                        continue
-                    values: list[float] = []
-                    for token in row[1:]:
-                        token = token.strip()
-                        if not token:
-                            continue
-                        values.append(parse_number(token))
-                    return values
+                return list(csv.reader(handle, delimiter=";")), encoding
         except UnicodeDecodeError:
             continue
-    raise ValueError(f"Row not found: {metric_row_name}")
+    raise UnicodeDecodeError("csv", b"", 0, 1, f"Could not decode {csv_path}")
 
 
-def split_lamp_series(values: list[float]) -> dict[str, list[float]]:
+def build_series_labels(series_count: int) -> list[str]:
     expected = STEPS_PER_LAMP * len(LAMP_NAMES)
-    if len(values) < expected:
-        raise ValueError(f"Expected at least {expected} values, got {len(values)}.")
+    if series_count == expected:
+        labels: list[str] = []
+        for lamp in LAMP_NAMES:
+            for step in DIMMING_STEPS:
+                labels.append(f"{lamp} {step}%")
+        return labels
+    return [f"Series {idx + 1}" for idx in range(series_count)]
 
-    values = values[:expected]
-    return {
-        lamp: values[idx * STEPS_PER_LAMP : (idx + 1) * STEPS_PER_LAMP]
-        for idx, lamp in enumerate(LAMP_NAMES)
-    }
+
+def read_long_spectra(csv_path: Path) -> tuple[list[float], list[list[float]], str]:
+    rows, encoding = read_csv_rows(csv_path)
+
+    header_row_idx = -1
+    for idx, row in enumerate(rows):
+        if row and row[0].strip() == SPECTRAL_HEADER:
+            header_row_idx = idx
+            break
+    if header_row_idx < 0:
+        raise ValueError(f"Row not found: {SPECTRAL_HEADER}")
+
+    header_row = rows[header_row_idx]
+    series_count = sum(1 for token in header_row[1:] if token.strip())
+    if series_count == 0:
+        raise ValueError("No spectral series found after spectral header.")
+
+    wavelengths: list[float] = []
+    spectra: list[list[float]] = [[] for _ in range(series_count)]
+
+    for row in rows[header_row_idx + 1 :]:
+        if not row:
+            if wavelengths:
+                break
+            continue
+
+        first_token = row[0].strip()
+        if not first_token:
+            if wavelengths:
+                break
+            continue
+
+        try:
+            wavelength = parse_number(first_token)
+        except ValueError:
+            if wavelengths:
+                break
+            continue
+
+        wavelengths.append(wavelength)
+        for series_idx in range(series_count):
+            token = row[series_idx + 1].strip() if series_idx + 1 < len(row) else ""
+            spectra[series_idx].append(parse_number(token) if token else float("nan"))
+
+    if not wavelengths:
+        raise ValueError("No wavelength rows found in long-format spectral block.")
+    return wavelengths, spectra, encoding
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Plot 5%..100% measurements for Cool White, Deep Red, and Far Red from one CSV."
+        description="Plot all long-format spectra from one CSV, with wavelength on the x-axis."
     )
     parser.add_argument(
         "csv_path",
         nargs="?",
         default=str(Path(__file__).with_name("G4_5%_increments_3_lamps.csv")),
-        help="Path to the combined 3-lamp CSV file.",
+        help="Path to the combined 3-lamp CSV file (long spectral format).",
     )
     parser.add_argument("--save", type=str, help="Optional output image path.")
     parser.add_argument("--no-show", action="store_true", help="Skip opening the plot window.")
+    parser.add_argument("--legend", action="store_true", help="Show legend for all series.")
     args = parser.parse_args()
 
     csv_path = Path(args.csv_path)
     if not csv_path.exists():
         raise FileNotFoundError(f"CSV not found: {csv_path}")
 
-    values = read_metric_values(csv_path)
-    lamp_series = split_lamp_series(values)
+    wavelengths, spectra, encoding = read_long_spectra(csv_path)
+    labels = build_series_labels(len(spectra))
 
     print(f"Loaded: {csv_path}")
-    print(f"Metric: {METRIC_ROW}")
-    for lamp in LAMP_NAMES:
-        print(f"{lamp}: {len(lamp_series[lamp])} points")
+    print(f"Encoding: {encoding}")
+    print(f"Wavelength points: {len(wavelengths)}")
+    print(f"Series: {len(spectra)}")
 
-    plt.figure(figsize=(10, 5))
-    for lamp in LAMP_NAMES:
-        plt.plot(DIMMING_STEPS, lamp_series[lamp], marker="o", linewidth=2, label=lamp)
+    plt.figure(figsize=(13, 7))
+    for label, values in zip(labels, spectra):
+        plt.plot(wavelengths, values, linewidth=1.1, alpha=0.9, label=label)
 
-    plt.xticks(DIMMING_STEPS)
-    plt.xlabel("Dimming level (%)")
-    plt.ylabel("Ephot (umol/s sqm)")
-    plt.title("G4 3 Lamps: PAR Photon Flux vs Dimming Level")
+    plt.xlabel("Wavelength (nm)")
+    plt.ylabel("Ee [W/(sqm*nm)]")
+    plt.title("G4 3 Lamps: 60 Spectra vs Wavelength")
     plt.grid(True, alpha=0.3)
-    plt.legend()
+    if args.legend:
+        plt.legend(loc="upper left", fontsize=7, ncol=3, framealpha=0.85)
     plt.tight_layout()
 
     if args.save:

@@ -230,6 +230,7 @@ export default function CsvPhaseAnalyzer() {
   // App protocol state
   const protocol = useProto((s: any) => s.protocol);
   const setProtocol = useProto((s: any) => s.setProtocol);
+  const profile = useProto((s: any) => s.profile) as string;
 
   const [fileName, setFileName] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
@@ -301,6 +302,26 @@ export default function CsvPhaseAnalyzer() {
     if (!result || "error" in result) return;
     try {
       const pointsRaw = (result as any).points as [string, any][];
+
+      // --- Temperature bounds check (warn, don’t block) ---
+      if (targetParam === "Temperature") {
+        const minDeg = profile === "G7" ? -4 : 4;
+        const maxDeg = 42;
+        const bad = pointsRaw
+          .map(([, v]) => (typeof v === "number" ? v : Number(v)))
+          .filter((v) => Number.isFinite(v) && (v < minDeg || v > maxDeg));
+        if (bad.length > 0) {
+          const examples = [...new Set(bad)]
+            .slice(0, 5)
+            .map((v) => `${v} °C`)
+            .join(", ");
+          const ok = window.confirm(
+            `⚠️ ${bad.length} temperature point(s) are outside the allowed range ` +
+            `(${minDeg}–${maxDeg} °C for ${profile}):\n${examples}\n\nApply anyway?`
+          );
+          if (!ok) return;
+        }
+      }
       // Map values to machine scale (e.g., Temperature in tenths, Cool White 0..100)
       const points = pointsRaw
         .filter(([t]) => !!t)
