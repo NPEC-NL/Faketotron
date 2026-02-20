@@ -303,7 +303,7 @@ const RANGES={
   "DeepRed":{min:0,max:100,int:true},
   "FarRed":{min:0,max:100,int:true},
   "Humidity":{min:35,max:90,int:true},
-  "Temperature":{min:0,max:500,int:true,scale:10},
+  "Temperature":{min:4,max:42,int:false,scale:10},
   "UVB":{min:0,max:100,int:true}
 };
 const DEF={
@@ -499,6 +499,10 @@ function buildRangesForProfile(profileName, parts){
       out[n] = {min:0,max:100,int:true};
     });
   }
+  // G7 can go down to -4 °C (stored as -40)
+  if(profileName==='G7'){
+    if(out['Temperature']){ out['Temperature'].min = -4; out['Temperature'].max = 42; }
+  }
   // Special: Helios growth custom limits
   if(profileName==='Helios growth'){
     if(out['CO2']){ out['CO2'].min = 0; out['CO2'].max = 1500; }
@@ -604,6 +608,13 @@ function applyProfile(name){
     applyProfile(newName);
   };
 })();
+
+// Expose profile hook so the host iframe bridge can call applyProfile('G7') etc.
+window.setProfileFromHost = function(profileName){
+  if(profileName && typeof applyProfile === 'function'){
+    applyProfile(profileName);
+  }
+};
 
 
 
