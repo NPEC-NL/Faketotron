@@ -1347,10 +1347,17 @@ function buildParts(){const parts=[];groups.forEach(g=>{const tu=TYPE_UNIT[g.typ
 function buildProtocolJson(){
   const desc=$('#desc').value||"";
   let logicVal=$('#logic').value.trim(); if(logicVal==='- not set -') logicVal='';
-  if(logicVal!=='' && !isHHMMSSClock(logicVal)){alert('Logic start time must be HH:MM:SS or left blank'); return null;}
   const repRaw=$('#repeat').value.trim(); let repeat=2147483647;
   if(repRaw && repRaw!=='Infinitely times'){ const n=parseInt(repRaw,10); if(!Number.isNaN(n)&&n>0) repeat=n; }
   return {description:desc,repeat:repeat,logic:logicVal,sections:[{parts:buildParts()}]};
+}
+function validateLogicStartTime(){
+  let logicVal=$('#logic').value.trim(); if(logicVal==='- not set -') logicVal='';
+  if(logicVal!=='' && !isHHMMSSClock(logicVal)){
+    alert('Logic start time must be HH:MM:SS or left blank');
+    return false;
+  }
+  return true;
 }
 
 function encodeULEB128(n){
@@ -1702,6 +1709,7 @@ function integrityCheckAndSave(data){
 $('#btnSave').onclick=()=>{
   if(!protocol){alert('Nothing to save.');return;}
   if(!isProtocolValid()){alert('All variables must be assigned and each type must have a group before saving.');return;}
+  if(!validateLogicStartTime()) return;
   const data=buildProtocolJson(); if(!data) return;
   // Compute total duration per group using phaseDurationSeconds (supports csv-import)
   const totals = groups.map(g=>g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0));
