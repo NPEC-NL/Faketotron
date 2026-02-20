@@ -448,8 +448,6 @@ export default function LightTools() {
   const [lampCal, setLampCal] = useState<LampCalibrationData | null>(null);
   const [lampCalFile, setLampCalFile] = useState("");
   const [lampCalError, setLampCalError] = useState("");
-  const [lampCalRoom, setLampCalRoom] = useState<string | null>(null);
-  const [lampCalLoading, setLampCalLoading] = useState(false);
   const [jetiRef, setJetiRef] = useState<SpectrumPoint[]>([]);
   const [jetiRefFile, setJetiRefFile] = useState("");
   const [jetiRefError, setJetiRefError] = useState("");
@@ -457,32 +455,21 @@ export default function LightTools() {
   const [slDR, setSlDR] = useState(50);
   const [slFR, setSlFR] = useState(50);
 
-  const ROOM_CALIBRATIONS: Record<string, string | null> = {
-    G4: "/calibration/G4_lamps.csv",
-    G5: null,
-    G6: null,
-    G7: null,
-    G8: null,
-  };
-
-  function loadRoomCalibration(room: string) {
-    const url = ROOM_CALIBRATIONS[room];
-    if (!url) return;
-    setLampCalRoom(room);
-    setLampCalLoading(true);
+  function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLampCalFile(file.name);
     setLampCalError("");
-    setLampCal(null);
-    fetch(url)
-      .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.text(); })
-      .then((text) => {
-        setLampCal(parseLampCalibrationCsv(text));
-        setLampCalFile(`${room} calibration (Google Sheets)`);
-        setLampCalLoading(false);
-      })
-      .catch((err: any) => {
-        setLampCalError(err.message ?? "Fetch error");
-        setLampCalLoading(false);
-      });
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        setLampCal(parseLampCalibrationCsv(reader.result as string));
+      } catch (err: any) {
+        setLampCalError(err.message ?? "Parse error");
+        setLampCal(null);
+      }
+    };
+    reader.readAsText(file);
   }
 
   function onJetiRefFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
@@ -642,38 +629,30 @@ export default function LightTools() {
         {/* File pickers */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
-            <label className="block text-sm font-medium">Lamp Calibration — Select Room</label>
-            <div className="flex flex-wrap gap-2">
-              {Object.entries(ROOM_CALIBRATIONS).map(([room, url]) => {
-                const available = url !== null;
-                const active = lampCalRoom === room;
-                return (
-                  <button
-                    key={room}
-                    onClick={() => available && loadRoomCalibration(room)}
-                    title={available ? `Load ${room} lamp calibration` : `${room} calibration not yet available`}
-                    className={
-                      `px-4 py-1.5 rounded-full text-sm font-medium border transition-colors ` +
-                      (active
-                        ? "bg-purple-600 text-white border-purple-600"
-                        : available
-                        ? "bg-white text-slate-800 border-slate-400 hover:bg-purple-50 hover:border-purple-400 cursor-pointer"
-                        : "bg-slate-100 text-slate-400 border-slate-200 cursor-not-allowed")
-                    }
-                  >
-                    {room}
-                    {!available && <span className="ml-1 text-xs">(soon)</span>}
-                  </button>
-                );
-              })}
-            </div>
-            {lampCalLoading && <div className="text-xs text-slate-500 animate-pulse">⟳ Loading {lampCalRoom} calibration…</div>}
-            {!lampCalLoading && lampCal && (
+            <label className="block text-sm font-medium">Lamp Calibration CSV</label>
+            <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside">
+              <li>
+                Download the calibration file for your room from{" "}
+                <a
+                  href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 underline"
+                >
+                  this Google Drive folder
+                </a>
+                {" "}(G4, G5, G6, G7 or G8 — only G4 is available so far)
+              </li>
+              <li>Upload that file below:</li>
+            </ol>
+            <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
+            {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
+            {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
+            {lampCal && (
               <div className="text-xs text-green-700">
-                ✓ {lampCalRoom} loaded — {lampCal.coolWhite[0]?.length ?? 0} wavelengths, 3 channels × 20 levels
+                ✓ Loaded — {lampCal.coolWhite[0]?.length ?? 0} wavelengths, 3 channels × 20 levels
               </div>
             )}
-            {lampCalError && <div className="text-xs text-red-600">Error: {lampCalError}</div>}
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium">Jeti Reference Spectrum (optional)</label>
