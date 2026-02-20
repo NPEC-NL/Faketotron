@@ -285,7 +285,7 @@ export default function LightTools() {
     const steps = Array.from({ length: 101 }, (_, i) => i); // 0..100 inclusive
     for (const ch of allChannels) {
       const { A, b } = paramsFor(ch);
-      const data: PercentRow[] = steps.map((p) => ({ percent: p, value: A * p + b }));
+      const data: PercentRow[] = steps.map((p) => ({ percent: p, value: Math.max(0, A * p + b) }));
       series.push({ name: ch, data });
     }
     return series;
@@ -298,7 +298,7 @@ export default function LightTools() {
       let sum = 0;
       for (const ch of allChannels) {
         const { A, b } = paramsFor(ch);
-        sum += A * p + b;
+        sum += Math.max(0, A * p + b);
       }
       return { percent: p, value: sum };
     });
@@ -309,7 +309,7 @@ export default function LightTools() {
     return allChannels.map((ch) => {
       const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
-      return { name: ch, data: [{ percent: pct, value: A * pct + b }] };
+      return { name: ch, data: [{ percent: pct, value: Math.max(0, A * pct + b) }] };
     });
   }, [preset, JSON.stringify(perChannelPercent)]);
 
@@ -318,7 +318,7 @@ export default function LightTools() {
     return allChannels.reduce((sum, ch) => {
       const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
-      return sum + (A * pct + b);
+      return sum + Math.max(0, A * pct + b);
     }, 0);
   }, [preset, JSON.stringify(perChannelPercent)]);
 
@@ -327,7 +327,7 @@ export default function LightTools() {
     return allChannels.map((ch) => {
       const { A, b } = paramsFor(ch);
       const pct = perChannelPercent[ch] ?? 50;
-      return { name: ch, ppfd: A * pct + b, color: colorFor(ch) };
+      return { name: ch, ppfd: Math.max(0, A * pct + b), color: colorFor(ch) };
     });
   }, [preset, JSON.stringify(perChannelPercent)]);
 
@@ -408,7 +408,7 @@ export default function LightTools() {
               {allChannels.map((ch) => {
                 const pct = perChannelPercent[ch] ?? 50;
                 const { A, b } = paramsFor(ch);
-                const ppfd = A * pct + b;
+                const ppfd = Math.max(0, A * pct + b);
                 return (
                   <div key={ch} className="flex items-center gap-3">
                     <div className="w-28 text-sm font-medium">{ch}</div>
