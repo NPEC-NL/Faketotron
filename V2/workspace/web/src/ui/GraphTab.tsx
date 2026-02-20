@@ -196,6 +196,26 @@ function ensurePhaseShape(raw: any) {
 }
 
 
+/* ───────────── Temperature helpers ───────────── */
+
+/** Returns true when the group represents a temperature channel. */
+function isTemperatureGroup(g: any): boolean {
+  const name = ((g && (g["group-name"] ?? g.name)) || "").toLowerCase();
+  const type = (g?.type || "").toLowerCase();
+  const unit = (g?.unit || "").toLowerCase();
+  return type === "temperature" || unit === "celsius" || name.includes("temp");
+}
+
+/**
+ * Returns allowed temperature bounds in raw protocol units (tenths of a degree).
+ *
+ * G7: −4 °C – 42 °C  (−40 – 420 raw)
+ * All other rooms: 4 °C – 42 °C (40 – 420 raw)
+ */
+function getTempBoundsRaw(room: string): { min: number; max: number } {
+  return room === "G7" ? { min: -40, max: 420 } : { min: 40, max: 420 };
+}
+
 /* ───────────── Component ───────────── */
 
 type Row = {
@@ -212,6 +232,7 @@ export default function GraphTab() {
   const protocol   = useProto((s: any) => s.protocol);
   const protoRev   = useProto((s: any) => s.protoRev ?? 0);
   const setProtocol = useProto((s: any) => s.setProtocol);
+  const profile    = useProto((s: any) => s.profile) as string;
 
   // Local UI state
   const [visible, setVisible] = useState<Set<number>>(new Set());
@@ -219,6 +240,7 @@ export default function GraphTab() {
   const [scroll, setScroll] = useState<number>(0);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<{ gi: number; pi: number } | null>(null);
+  const [tempWarning, setTempWarning] = useState<string | null>(null);
 
   // Local drafts
   const [drafts, setDrafts] = useState<Map<string, DraftPatch>>(new Map());
@@ -238,7 +260,13 @@ export default function GraphTab() {
   useEffect(() => {
     setSelPhase(null);
     setDrafts(new Map());
+    setTempWarning(null);
   }, [protoRev]);
+
+  // Clear temperature warning whenever the selected phase changes.
+  useEffect(() => {
+    setTempWarning(null);
+  }, [selPhase]);
 
   const overlayProtocol = useMemo(() => applyDrafts(protocol, drafts), [protocol, drafts]);
   const overlayParts = overlayProtocol?.sections?.[0]?.parts || [];
@@ -338,8 +366,25 @@ export default function GraphTab() {
       return next;
     });
   }
+  /** Numeric fields that carry temperature values in fixed/ramp/sin phases. */
+  const TEMP_NUMERIC_KEYS = new Set(["value", "start", "end", "min", "max", "offset"]);
+
   function onNum(gi: number, pi: number, key: string, n: number) {
-    if (Number.isFinite(n)) draftKV(gi, pi, key, n);
+    if (!Number.isFinite(n)) return;
+    draftKV(gi, pi, key, n);
+    // Temperature range check
+    const g = overlayParts?.[gi];
+    if (isTemperatureGroup(g) && TEMP_NUMERIC_KEYS.has(key)) {
+      const bounds = getTempBoundsRaw(profile);
+      if (n < bounds.min || n > bounds.max) {
+        const deg    = (n / 10).toFixed(1);
+        const minDeg = (bounds.min / 10).toFixed(0);
+        const maxDeg = (bounds.max / 10).toFixed(0);
+        setTempWarning(`${deg} °C is outside the allowed range of ${minDeg} °C to ${maxDeg} °C for ${profile}.`);
+      } else {
+        setTempWarning(null);
+      }
+    }
   }
   function onTime(gi: number, pi: number, key: string, raw: string) {
     const sec = parseDurationToSeconds(raw);
@@ -583,9 +628,28 @@ function MyButtons({ setDrafts, saveDraftsToEditor }) {
               </div>
               <div className="rule" />
 
-              <div className="muted small" style={{ marginBottom: 8 }}>
-                Range checks are not enforced here. Machine limits apply in the legacy editor.
-              </div>
+              {tempWarning && (
+                <div style={{
+                  background: "#fef3c7",
+                  border: "1px solid #f59e0b",
+                  borderRadius: 6,
+                  padding: "8px 10px",
+                  fontSize: 12,
+                  color: "#92400e",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "flex-start",
+                  gap: 8,
+                  marginBottom: 4,
+                }}>
+                  <span>⚠️ {tempWarning}</span>
+                  <button
+                    onClick={() => setTempWarning(null)}
+                    style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, lineHeight: 1, padding: 0, color: "#92400e", flexShrink: 0 }}
+                    title="Dismiss"
+                  >×</button>
+                </div>
+              )}
 
               <div style={{ fontSize: 13, lineHeight: 1.5, display: "grid", gap: 8 }}>
                 <div><b>Group:</b> {row?.name}</div>
@@ -775,7 +839,7 @@ function MyButtons({ setDrafts, saveDraftsToEditor }) {
                 )}
 
                 <div className="muted small">
-                  Edits here are not range-checked. The legacy editor enforces machine limits on save.
+                  Temperature is checked here (4–42 °C; G7 allows −4–42 °C).
                 </div>
               </div>
             </div>
