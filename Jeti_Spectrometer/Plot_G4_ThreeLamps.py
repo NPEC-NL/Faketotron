@@ -26,21 +26,27 @@ def parse_number(token: str) -> float:
 
 
 def read_metric_values(csv_path: Path, metric_row_name: str = METRIC_ROW) -> list[float]:
-    with csv_path.open("r", encoding="utf-8-sig", newline="") as handle:
-        reader = csv.reader(handle, delimiter=";")
-        for row in reader:
-            if not row:
-                continue
-            header = row[0].strip()
-            if header != metric_row_name:
-                continue
-            values: list[float] = []
-            for token in row[1:]:
-                token = token.strip()
-                if not token:
-                    continue
-                values.append(parse_number(token))
-            return values
+    encodings_to_try = ("utf-8-sig", "cp1252")
+
+    for encoding in encodings_to_try:
+        try:
+            with csv_path.open("r", encoding=encoding, newline="") as handle:
+                reader = csv.reader(handle, delimiter=";")
+                for row in reader:
+                    if not row:
+                        continue
+                    header = row[0].strip()
+                    if header != metric_row_name:
+                        continue
+                    values: list[float] = []
+                    for token in row[1:]:
+                        token = token.strip()
+                        if not token:
+                            continue
+                        values.append(parse_number(token))
+                    return values
+        except UnicodeDecodeError:
+            continue
     raise ValueError(f"Row not found: {metric_row_name}")
 
 
