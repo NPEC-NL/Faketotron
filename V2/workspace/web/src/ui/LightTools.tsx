@@ -616,98 +616,7 @@ export default function LightTools() {
       </div>
       <div className="text-sm mt-2">Total {measurementType} (current) ≈ <b>{totalPPFD.toFixed(2)}</b> µmol/m²/s</div>
 
-      {/* Simplified plot: X = PPFD (µmol/m²/s), Y = device % */}
-      <div className="border rounded-lg p-3 mt-4">
-        <div className="font-medium">{measurementType} map (X = µmol/m²/s, Y = %)</div>
-        {allChannels.length === 0 ? (
-          <div className="text-sm text-slate-500 mt-3">No channels to plot.</div>
-        ) : (
-          <div className="h-72 w-full mt-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <Legend
-                  verticalAlign="top"
-                  align="right"
-                  wrapperStyle={{ fontSize: 12 }}
-                  formatter={(val: string) => {
-                    // Map internal channel keys to display names
-                    const map: Record<string, string> = {
-                      coolWhite: 'Cool White',
-                      deepRed: 'Deep Red',
-                      farRed: 'Far Red',
-                      Total: 'Total (sum)',
-                    };
-                    return map[val] || val;
-                  }}
-                />
-                <XAxis dataKey="value" type="number" tickFormatter={(v) => `${v}`} label={{ value: "µmol/m²/s", position: "insideBottomRight", offset: -5 }} />
-                <YAxis dataKey="percent" domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
-                <Tooltip formatter={(v: any, n: any) => [`${(v as number).toFixed(2)} ${n === 'value' ? 'µmol/m²/s' : '%'}`, n === 'value' ? measurementType : 'Percent']} labelFormatter={(l) => `${measurementType}: ${l}`} />
-                {/* Per-channel dashed curves */}
-                {percentSeries.map((s) => (
-                  <Line
-                    key={s.name}
-                    data={s.data}
-                    dataKey="percent"
-                    name={s.name}
-                    dot={false}
-                    type="monotone"
-                    strokeDasharray="4 2"
-                    stroke={colorFor(s.name)}
-                  />
-                ))}
-                {/* Total curve (solid) */}
-                <Line data={totalPercentData} dataKey="percent" name="Total" dot={false} type="monotone" strokeWidth={2} stroke="#222" />
-                {/* Current selection markers (one dot per channel) */}
-                {currentPoints.map((s) => (
-                  <Line
-                    key={`dot-${s.name}`}
-                    data={s.data}
-                    dataKey="percent"
-                    // Hide marker lines from legend to avoid duplicates
-                    legendType="none"
-                    name={`${s.name} (current)`}
-                    stroke={colorFor(s.name)}
-                    strokeOpacity={0}
-                    isAnimationActive={false}
-                    dot={{ r: 4, stroke: colorFor(s.name), fill: "#fff", strokeWidth: 2 }}
-                    activeDot={{ r: 5 }}
-                    type="monotone"
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-      </div>
-
-      {/* Spectrum visualization (approximate): channel contributions */}
-      <div className="border rounded-lg p-3">
-        <div className="font-medium">Spectrum (approximate, summed contributions)</div>
-        {spectrumBars.length === 0 ? (
-          <div className="text-sm text-slate-500 mt-3">No data.</div>
-        ) : (
-          <div className="h-52 w-full mt-3">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={spectrumBars} margin={{ top: 10, right: 20, bottom: 10, left: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis label={{ value: "µmol/m²/s", angle: -90, position: "insideLeft" }} />
-                <Tooltip formatter={(v: any) => [`${(v as number).toFixed(2)} µmol/m²/s`, measurementType]} />
-                <Bar dataKey="ppfd">
-                  {spectrumBars.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
-        <div className="text-xs text-slate-500 mt-2">Note: This is not a true SPD; it shows relative PPFD per channel at current settings.</div>
-      </div>
-
-      {/* ===== Spectrum Lab ===== */}
+      {/* ===== Spectrum Lab ===== */
       <div className="border-t-2 border-purple-300 pt-5 mt-6 space-y-4">
         <h2 className="text-lg font-bold text-purple-900">Spectrum Lab — Reconstruct &amp; Compare</h2>
         <p className="text-sm text-slate-600">
@@ -732,6 +641,11 @@ export default function LightTools() {
           </div>
           <div className="space-y-1">
             <label className="block text-sm font-medium">Jeti Reference Spectrum (optional)</label>
+            <p className="text-xs text-slate-500 mb-1">
+              Load a Jeti spectroradiometer export (.csv, semicolon-delimited, comma as decimal
+              separator). The first Ee column is used as a reference and shown as a dashed overlay
+              on the reconstructed spectrum chart for direct comparison with predicted output.
+            </p>
             <input type="file" accept=".csv" onChange={onJetiRefFileChosen} className="text-sm" />
             {jetiRefFile && <div className="text-xs text-slate-500">{jetiRefFile}</div>}
             {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
@@ -774,7 +688,7 @@ export default function LightTools() {
         {overlayData.length > 0 && (
           <div className="border rounded-lg p-3">
             <div className="font-medium">Spectrum Overlay — Reconstructed vs Measured</div>
-            <div className="h-80 w-full mt-3">
+            <div className="h-[560px] w-full mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={overlayData} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -807,7 +721,7 @@ export default function LightTools() {
         {lampCal && reconstructed.length > 0 && (
           <div className="border rounded-lg p-3">
             <div className="font-medium">Individual Channel Spectra</div>
-            <div className="h-64 w-full mt-3">
+            <div className="h-[480px] w-full mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
                   <CartesianGrid strokeDasharray="3 3" />

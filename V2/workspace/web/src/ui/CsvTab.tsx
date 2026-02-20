@@ -215,32 +215,6 @@ function analyzeSimpleFromText(
   return { phases, durMap };
 }
 
-/* ===================== Jeti CSV Parser ===================== */
-
-type JetiRow = { nm: number; ee: number };
-
-function parseJetiCsv(text: string): JetiRow[] {
-  const lines = text.split(/\r?\n/);
-  // Find header row
-  const headerIdx = lines.findIndex((l) =>
-    l.replace(/\s/g, "").toLowerCase().startsWith("wavelength[nm]")
-  );
-  if (headerIdx < 0) throw new Error("Header row 'Wavelength [nm];Ee [W/(sqm*nm)]' not found.");
-  const dataLines = lines.slice(headerIdx + 1);
-  const rows: JetiRow[] = [];
-  for (const line of dataLines) {
-    if (!line || /^\s*$/.test(line)) continue;
-    // Jeti uses ';' as delimiter and ',' as decimal separator
-    const parts = line.split(";");
-    if (parts.length < 2) continue;
-    const nm = parseFloat(parts[0].trim().replace(",", "."));
-    const ee = parseFloat(parts[1].trim().replace(",", "."));
-    if (!Number.isFinite(nm) || !Number.isFinite(ee)) continue;
-    rows.push({ nm, ee });
-  }
-  return rows;
-}
-
 /* ===================== UI Component ===================== */
 
 export default function CsvPhaseAnalyzer() {
@@ -263,30 +237,6 @@ export default function CsvPhaseAnalyzer() {
   const [error, setError] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  // --- Jeti CSV state ---
-  const [jetiFileName, setJetiFileName] = useState<string>("");
-  const [jetiRows, setJetiRows] = useState<JetiRow[] | null>(null);
-  const [jetiError, setJetiError] = useState<string>("");
-  const jetiInputRef = useRef<HTMLInputElement | null>(null);
-
-  function onJetiFileChosen(file: File) {
-    setJetiError("");
-    setJetiRows(null);
-    setJetiFileName(file.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const rows = parseJetiCsv(String(reader.result || ""));
-        if (rows.length === 0) throw new Error("No spectral data rows found after header.");
-        setJetiRows(rows);
-      } catch (e: any) {
-        setJetiError(e?.message || String(e));
-      }
-    };
-    reader.onerror = () => setJetiError("Failed to read the file.");
-    reader.readAsText(file, "utf-8");
-  }
 
   const result = useMemo<
     | null
@@ -573,75 +523,7 @@ export default function CsvPhaseAnalyzer() {
       ) : rawText && result && "error" in result ? (
         <div className="text-sm text-red-600">Error: {result.error}</div>
       ) : null}
-      {/* ── Jeti Spectrometer CSV ── */}
-      <hr className="border-slate-200" />
 
-      <div>
-        <h2 className="text-xl font-semibold mb-1">Load Jeti Spectrometer CSV</h2>
-        <p className="text-sm text-slate-600 mb-3">
-          Load a Jeti spectrometer export. The file is scanned for the
-          <code className="mx-1">Wavelength [nm];Ee [W/(sqm*nm)]</code> header and all
-          spectral data rows below it are displayed.
-        </p>
-
-        <button
-          onClick={() => jetiInputRef.current?.click()}
-          className="border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"
-        >
-          Choose Jeti CSV…
-        </button>
-        <input
-          ref={jetiInputRef}
-          type="file"
-          accept=".csv,text/csv,text/plain"
-          className="hidden"
-          onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
-            const f = e.target.files?.[0] as File | undefined;
-            if (f) onJetiFileChosen(f);
-            // reset so the same file can be reloaded
-            e.target.value = "";
-          }}
-        />
-
-        {jetiFileName ? (
-          <div className="text-sm text-slate-700 mt-2">
-            <b>File:</b> {jetiFileName}
-          </div>
-        ) : null}
-
-        {jetiError ? (
-          <div className="text-sm text-red-600 mt-2">Error: {jetiError}</div>
-        ) : null}
-
-        {jetiRows && jetiRows.length > 0 ? (
-          <div className="border rounded p-3 mt-3">
-            <div className="font-medium mb-2">
-              Spectral data — {jetiRows.length} rows
-              {jetiRows.length > 100 ? " ✓" : " (fewer than 100 rows — check file)"}
-            </div>
-            <div className="overflow-auto max-h-[28rem]">
-              <table className="w-full text-sm border-collapse">
-                <thead className="sticky top-0 bg-white">
-                  <tr className="border-b">
-                    <th className="text-left py-1 pr-4">#</th>
-                    <th className="text-left py-1 pr-4">Wavelength (nm)</th>
-                    <th className="text-right py-1">Ee [W/(sqm·nm)]</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {jetiRows.map((row, i) => (
-                    <tr key={i} className="border-b">
-                      <td className="py-1 pr-4 text-slate-400">{i + 1}</td>
-                      <td className="py-1 pr-4">{row.nm}</td>
-                      <td className="py-1 text-right font-mono">{row.ee.toExponential(5)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        ) : null}
-      </div>
     </div>
   );
 }

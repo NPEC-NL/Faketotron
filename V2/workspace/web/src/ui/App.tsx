@@ -59,7 +59,7 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
-    {TabBtn("csv", "CSV")}
+    {TabBtn("csv", "Time-Series CSV")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
           <div className="flex items-center gap-3 pl-3 border-l border-slate-300 ml-auto">
             <img src={npecLogo} alt="NPEC logo" className="h-24 w-auto" />
