@@ -616,7 +616,7 @@ export default function LightTools() {
       </div>
       <div className="text-sm mt-2">Total {measurementType} (current) ≈ <b>{totalPPFD.toFixed(2)}</b> µmol/m²/s</div>
 
-      {/* ===== Spectrum Lab ===== */
+      {/* ===== Spectrum Lab ===== */}
       <div className="border-t-2 border-purple-300 pt-5 mt-6 space-y-4">
         <h2 className="text-lg font-bold text-purple-900">Spectrum Lab — Reconstruct &amp; Compare</h2>
         <p className="text-sm text-slate-600">
