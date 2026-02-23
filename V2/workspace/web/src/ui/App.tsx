@@ -4,11 +4,12 @@ import EditorTab from "./EditorTab";
 import GraphTab from "./GraphTab";
 import LightTools from "./LightTools";
 import MetadataTab from "./MetadataTab";
+import SemanticsTab from "./SemanticsTab";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "editor" | "graph" | "light" | "metadata";
+type TabKey = "editor" | "graph" | "light" | "metadata" | "semantics";
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>("editor");
@@ -52,8 +53,8 @@ export default function App() {
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
         {TabBtn("light", "Light Tools")}
-        {/* Hidden before finish  */}
         {TabBtn("metadata", "Metadata")}
+        {TabBtn("semantics", "Semantics")}
         
       </div>
 
@@ -79,6 +80,10 @@ export default function App() {
 
       <div ref={metaRef} style={{ display: tab === "metadata" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <MetadataTab />
+      </div>
+
+      <div style={{ display: tab === "semantics" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
+        <SemanticsTab />
       </div>
 
     </div>

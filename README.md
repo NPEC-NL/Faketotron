@@ -112,6 +112,9 @@ For each column (variable group),
 
 After finish, click **Download csv** to get your Environment sheet (and Experimental Factor sheet, if exists.)
 
+## Semantics tab
+
+The Semantics tab exports a canonical, dataset-safe interpretation of the current protocol as `protocol_semantics.json` and `portable_semantics.json`. This is designed to bridge vendor-specific machine encodings (e.g. PSI storing 21°C as `210`, or light control as `%` driver output) to stable scientific meaning using PECO ontology mappings. Because ontology terms represent experimental intent and lab baselines can differ, users manually select the most appropriate PECO term per control group (with links to the PECO term viewer). Light channels optionally accept a SpectraPen calibration CSV filename for downstream interpretation, while control remains in `%` because spectrum control is richer than PPFD. Unused control groups (empty phases or only `const 0`) are greyed out and omitted from exported semantics.
 
 ## Important Notes:
 - **Variable 2 refer to the Higher shelf.** For example, CoolWhite2 or DeepRed2 is for the settings on the higher shelf, while CoolWhite is for the lower shelf.
