@@ -4,7 +4,6 @@ This document specifies the **scientific semantics** of Faketotron protocols and
 
 Faketotron controls **environmental conditions** (temperature, humidity, CO₂, and multi‑channel lighting). The semantics layer provides a canonical representation that separates *scientific meaning* from *vendor implementation details*.
 
----
 
 ## 1. Motivation: why a semantics layer exists
 
@@ -17,7 +16,6 @@ Instrument protocols are often optimized for control firmware rather than archiv
 
 The semantics layer turns these protocol artifacts into a representation that remains interpretable when the original vendor conventions are unknown.
 
----
 
 ## 2. Design philosophy
 
@@ -33,7 +31,6 @@ Profile range checks, step limits, and “allowed channels” are engineering co
 ### 2.3 Ontology mapping as a curated claim
 Ontology terms encode *experimental intent*, not just numeric values. Fine-grained labels (e.g., “high temperature”) may depend on biological baselines and laboratory conventions. Therefore, mappings to ontology terms are recorded with explicit **relation qualifiers** (exact / close / broad / narrow) rather than inferred automatically.
 
----
 
 ## 3. Artifacts
 
@@ -53,7 +50,6 @@ A vendor-neutral view expressed in terms of stable channel identifiers (e.g., `e
 
 These outputs are consistent: the portable artifact is a projection of the protocol-aligned canonical model with vendor bindings removed.
 
----
 
 ## 4. Schema contract and location
 
@@ -70,7 +66,6 @@ Each exported JSON includes a schema header:
 
 Even without runtime schema validation in the webapp, the schema serves as the scientific interoperability contract for downstream consumers.
 
----
 
 ## 5. Units: UCUM is normative
 
@@ -83,7 +78,6 @@ To remove ambiguity and support cross-lab tooling, canonical units MUST be UCUM 
 
 Vendor/source units from the instrument protocol may be recorded separately (e.g., `"celsius"` in the raw PSI protocol) but the semantics layer uses UCUM for canonical meaning.
 
----
 
 ## 6. Temporal semantics
 
@@ -101,7 +95,6 @@ Some instruments encode “infinite repetition” via sentinel integers (e.g., `
 - the raw machine-compatible repeat value (when applicable), and
 - the canonical interpretation (e.g., `forever`).
 
----
 
 ## 7. Curve primitives as mathematical objects
 
@@ -141,7 +134,6 @@ A stochastic/algorithmic generator may be represented as a distinct type. If an 
 ### 7.5 `csv-import`
 An explicit time-value trace defined by points, with a declared interpolation rule. This representation can encode arbitrary waveforms and serves as the most explicit form of a schedule.
 
----
 
 ## 8. Ontology mapping (PECO)
 
@@ -154,7 +146,6 @@ Environmental treatments can be annotated with PECO terms (Plant Experimental Co
 
 Because some device channels do not have a one-to-one PECO class (e.g., “cyan” vs “green”), qualifiers are important for honest, machine-readable claims.
 
----
 
 ## 9. Lighting: spectrum-aware semantics
 
@@ -180,7 +171,6 @@ where:
 
 Semantics calibration entries explicitly declare this model and reference the CSV containing the per‑wavelength `A` and `b` columns.
 
----
 
 ## 10. Two-shelf geometry and light leakage
 
@@ -200,7 +190,7 @@ Leakage is then composed additively in the spectral domain:
 
 Leakage calibration is recorded only when explicitly provided (it may be negligible in many experiments).
 
----
+
 
 ## 11. Extensibility
 
@@ -212,7 +202,7 @@ The semantics model is intended to grow without breaking existing consumers:
 
 The guiding principle is to encode **scientific meaning** explicitly while keeping vendor bindings optional and quarantined.
 
----
+
 
 ## 12. Recommended publication practice
 
