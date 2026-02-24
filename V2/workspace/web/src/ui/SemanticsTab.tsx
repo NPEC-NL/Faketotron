@@ -303,21 +303,102 @@ export default function SemanticsTab() {
         </div>
       </div>
 
-      <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, border: "1px solid #e5e7eb", background: "#fafafa" }}>
-        <div style={{ fontWeight: 800, marginBottom: 6 }}>Scientific semantics</div>
-        <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-          The exported semantics files provide a canonical interpretation of the protocol in terms of environmental treatments (PECO)
-          and mathematically defined control functions. This separates scientific meaning from device-specific encodings, while retaining
-          enough information to support faithful re-export when applicable.
+      <Card
+        title="How this tab works"
+        right={
+          <button
+            className="btn"
+            onClick={() => {
+              setOverrides(emptyOverrides());
+              try {
+                window.localStorage.removeItem(LS_KEY);
+              } catch {
+                // ignore
+              }
+            }}
+            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 10px", background: "white" }}
+          >
+            Reset selections
+          </button>
+        }
+      >
+        <div style={{ color: "#374151", lineHeight: 1.5 }}>
+          <div style={{ marginBottom: 10 }}>
+            This tab generates a <b>canonical semantics layer</b> for your current protocol: it keeps the same structure and
+            channel names you already use (so Faketotron can round‑trip), but adds stable scientific meaning.
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            <li>
+              Pick a <b>PECO term</b> for each control group (temperature / humidity / CO₂ / each light channel).
+            </li>
+            <li>
+              For <b>light</b> groups, you may optionally provide the <b>calibration CSV filename</b> (SpectraPen regression)
+              so others can map internal % to measured spectrum/PPFD.
+            </li>
+            <li>
+              Groups with <b>no phases</b> or only a <b>const 0</b> placeholder are treated as <b>not used</b>: they are greyed
+              out here and excluded from the exported semantics files.
+            </li>
+          </ul>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Why this tab exists</div>
+            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+              <p style={{ marginTop: 0 }}>
+                <b>protocol.json/.fyt</b> are machine-facing and may contain vendor-specific encodings (e.g. temperature stored as 210).
+                The Semantics tab exports <b>canonical meaning</b> so datasets remain usable outside the PSI ecosystem and across future devices.
+              </p>
+              <p style={{ marginBottom: 0 }}>
+                The exported files keep the same experimental timeline, but add PECO links, spectral hints, and (optional) calibration filenames.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Why PECO selection is manual</div>
+            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+              Ontology terms encode <b>intent</b>, not just numbers. Two labs can run the same 28°C profile but only one considers it “high temperature”.
+              Faketotron can’t infer that baseline safely, so you choose the most accurate term.
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Risk of choosing fine-grained terms</div>
+            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+              Terms like “high temperature” / “cold temperature” can become misleading if you haven’t defined thresholds.
+              If you’re unsure, pick a broader term (e.g. “temperature exposure”) and document thresholds in your SOP/notes.
+              Overly specific terms can reduce comparability across datasets.
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12 }}>
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>Meaning of mapping relations</div>
+            <ul style={{ margin: 0, paddingLeft: 18, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+              <li><b>exact</b>: the protocol’s intended condition matches the term definition.</li>
+              <li><b>close</b>: very similar, but not perfectly aligned (useful when PECO lacks an exact match).</li>
+              <li><b>broad</b>: the term is more general than your intent (safe fallback when uncertain).</li>
+              <li><b>narrow</b>: the term is more specific than your intent (use only if you’re confident; implies a stronger claim).</li>
+            </ul>
+          </div>
+
+          <div style={{ marginTop: 10, color: "#374151" }}>
+            <b>Downloads</b>:
+            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
+              <li>
+                <b>protocol_semantics.json</b>: includes <b>protocol_canonical</b> (e.g. temperature 210 → 21.0) plus PECO
+                mappings and machine encoding so PSI users can still export back.
+              </li>
+              <li>
+                <b>portable_semantics.json</b>: a vendor‑neutral list of channels and time‑programs (still using % for light
+                control, with spectral hints and optional calibration file references).
+              </li>
+            </ul>
+            <div style={{ marginTop: 6, color: "#6b7280" }}>
+              Note: exports are generated from the current protocol in the store. <b>This tab does not modify protocol.json/.fyt</b>.
+            </div>
+          </div>
         </div>
-        <div style={{ marginTop: 10, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-          PECO mappings are curated annotations of experimental intent. Fine-grained terms (e.g., “high temperature”) may depend on biological
-          baselines and laboratory conventions; when uncertain, prefer a broader term.
-        </div>
-        <div style={{ marginTop: 10, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-          Mapping relation qualifiers: <b>exact</b> (matches), <b>close</b> (nearly matches), <b>broad</b> (more general), <b>narrow</b> (more specific).
-        </div>
-      </div>
+      </Card>
 
       {partsFlat.map(({ si, pi, g }) => {
         const key = partKey(si, pi);
