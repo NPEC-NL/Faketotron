@@ -1,7 +1,7 @@
+<img src="NPEC-logo-horizontal.png" width="200" />
+
 # Faketotron
 A protocol creation/edit web app for environmental treatment programs (temperature, humidity, CO₂, multi‑channel lighting), with exports for both **PSI-compatible** instrument protocols and **vendor‑neutral semantics** for reuse and reproducibility.
-
-[](NPEC-logo-horizontal.png)
 
 ## Table of contents
 - [Overview](#overview)
