@@ -1,0 +1,361 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/NPEC-NL/Faketotron/V2/schema/v0.1.0/portable_semantics.schema.json",
+  "title": "Faketotron portable semantics (vendor-neutral canonical)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generated_at",
+    "execution_context",
+    "schedule",
+    "repeat_semantics",
+    "curve_definitions",
+    "channels"
+  ],
+  "properties": {
+    "schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "version",
+        "id"
+      ],
+      "properties": {
+        "name": {
+          "const": "faketotron.portable_semantics"
+        },
+        "version": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        }
+      }
+    },
+    "generated_at": {
+      "type": "string"
+    },
+    "execution_context": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "profile_key"
+      ],
+      "properties": {
+        "profile_key": {
+          "type": "string"
+        }
+      }
+    },
+    "schedule": {
+      "$ref": "#/$defs/schedule"
+    },
+    "repeat_semantics": {
+      "$ref": "#/$defs/repeatSemantics"
+    },
+    "curve_definitions": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/channel"
+      }
+    }
+  },
+  "$defs": {
+    "pecoId": {
+      "type": "string",
+      "pattern": "^PECO:\\d{7}$"
+    },
+    "schedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "start_mode",
+        "timezone"
+      ],
+      "properties": {
+        "start_mode": {
+          "type": "string",
+          "enum": [
+            "manual_start",
+            "wall_clock"
+          ]
+        },
+        "logic_start_time": {
+          "type": "string"
+        },
+        "timezone": {
+          "type": "string"
+        }
+      }
+    },
+    "repeatSemantics": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "mode"
+      ],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "forever",
+            "count"
+          ]
+        },
+        "count": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "pecoTerm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "relation"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/pecoId"
+        },
+        "label": {
+          "type": "string"
+        },
+        "relation": {
+          "type": "string",
+          "enum": [
+            "exact",
+            "close",
+            "broad",
+            "narrow"
+          ]
+        }
+      }
+    },
+    "spectralHint": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "range_nm"
+          ],
+          "properties": {
+            "kind": {
+              "const": "range"
+            },
+            "range_nm": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "min",
+                "max"
+              ],
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "band_nm"
+          ],
+          "properties": {
+            "kind": {
+              "const": "bandpass"
+            },
+            "band_nm": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "min",
+                "max"
+              ],
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "typ": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "cct_K"
+          ],
+          "properties": {
+            "kind": {
+              "const": "broad_cct"
+            },
+            "cct_K": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "min",
+                "max"
+              ],
+              "properties": {
+                "min": {
+                  "type": "number"
+                },
+                "max": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "leakageModel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "calibration_csv",
+        "composition_equation",
+        "leak_regression_equation",
+        "wavelength_nm_range",
+        "output_unit"
+      ],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": [
+            "upper_to_lower_spectral_additive_regression"
+          ]
+        },
+        "calibration_csv": {
+          "type": "string"
+        },
+        "composition_equation": {
+          "type": "string",
+          "const": "E_low_actual(\u03bb) = E_low_set(\u03bb) + E_leak(\u03bb)"
+        },
+        "leak_regression_equation": {
+          "type": "string",
+          "const": "E_leak(\u03bb) = A(\u03bb) * p_upper + b(\u03bb)"
+        },
+        "wavelength_nm_range": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "min",
+            "max"
+          ],
+          "properties": {
+            "min": {
+              "type": "number"
+            },
+            "max": {
+              "type": "number"
+            }
+          }
+        },
+        "output_unit": {
+          "$ref": "#/$defs/ucumUnit"
+        },
+        "target_lower_var_candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        }
+      }
+    },
+    "channel": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": [
+        "id",
+        "kind",
+        "unit",
+        "peco_terms",
+        "program"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "light_channel": {
+          "type": "string"
+        },
+        "unit": {
+          "$ref": "#/$defs/ucumUnit",
+          "description": "Canonical unit (UCUM) for this channel."
+        },
+        "peco_terms": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/pecoTerm"
+          }
+        },
+        "spectral_hint": {
+          "$ref": "#/$defs/spectralHint"
+        },
+        "calibration_csv": {
+          "type": "string"
+        },
+        "shelf": {
+          "type": "string",
+          "enum": [
+            "lower",
+            "upper"
+          ]
+        },
+        "leakage_to_lower": {
+          "$ref": "#/$defs/leakageModel"
+        },
+        "program": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        },
+        "leakage_calibration_csv": {
+          "type": "string",
+          "description": "Optional leakage calibration CSV filename/URI for upper-shelf light leaking to lower shelf. Present only when provided."
+        }
+      }
+    },
+    "ucumUnit": {
+      "type": "string",
+      "description": "UCUM unit code (Unified Code for Units of Measure), e.g. Cel, %, ppm, umol.m-2.s-1.nm-1",
+      "pattern": "^[A-Za-z%][A-Za-z0-9.%\\-\\*/\\^()]*$"
+    }
+  }
+}

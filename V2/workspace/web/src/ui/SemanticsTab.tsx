@@ -16,11 +16,8 @@ import {
 
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
-const LS_KEY_BASE = "faketotron:semantics_overrides:v1";
-
-function deepClone<T>(x: T): T {
-  return typeof structuredClone === "function" ? structuredClone(x) : JSON.parse(JSON.stringify(x));
-}
+// Local override storage is profile-specific to avoid mismatches when profile changes.
+const LS_KEY_BASE = "faketotron:semantics_overrides:v3";
 
 function safeJsonParse<T>(s: string | null, fallback: T): T {
   if (!s) return fallback;
@@ -51,16 +48,78 @@ function partKey(sectionIdx: number, partIdx: number): string {
   return `${sectionIdx}:${partIdx}`;
 }
 
+/** Unused if phases empty, or all phases are const(value=0) placeholders. */
 function isPhasesUnused(phases: any): boolean {
   if (!Array.isArray(phases) || phases.length === 0) return true;
-  // Treat placeholder "const 0" across the whole experiment as "not used".
-  return phases.every((ph: any) => {
+  for (const ph of phases) {
     if (!ph || typeof ph !== "object") return false;
     if (ph.type !== "const") return false;
-    const v = (ph as any).value;
-    return typeof v === "number" && v === 0;
-  });
+    // treat missing value as used (avoid deleting ambiguous configs)
+    if (!("value" in ph)) return false;
+    if (Number(ph.value) !== 0) return false;
+  }
+  return true;
 }
+
+const isUpperShelfVar = (machineVar: string) => /2$/.test(machineVar);
+
+// UI hint only (placeholder). Exported semantics will NOT include leakage calibration unless user provides it.
+// Placeholder text only (not exported unless user provides a value)
+const leakagePlaceholder = (machineVar: string) => {
+  const base = machineVar.replace(/2$/, "").replace(/\d+$/, "");
+  return `${base}_lowshift.csv`;
+};
+
+function normalizeSelectedPeco(type: string, raw: string): string {
+  const opts = getPecoOptionsForGroupType(type).filter((o) => !!o.id);
+  if (raw && opts.some((o) => o.id === raw)) return raw;
+  const def = getDefaultPecoIdForGroupType(type);
+  if (def && opts.some((o) => o.id === def)) return def;
+  return opts[0]?.id ?? "";
+}
+
+function deepClone<T>(x: T): T {
+  return JSON.parse(JSON.stringify(x)) as T;
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function highlightJson(obj: any): string {
+  const json = escapeHtml(JSON.stringify(obj, null, 2));
+  // Simple token highlighting: strings, keys, numbers, booleans, null
+  return json
+    .replace(/"(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(?=\s*:)/g, '<span style="color:#7c3aed">$&</span>') // keys
+    .replace(/"(\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"/g, '<span style="color:#2563eb">$&</span>') // strings
+    .replace(/\b-?\d+(?:\.\d+)?(?:[eE][+\-]?\d+)?\b/g, '<span style="color:#b45309">$&</span>') // numbers
+    .replace(/\b(true|false)\b/g, '<span style="color:#059669">$1</span>') // booleans
+    .replace(/\bnull\b/g, '<span style="color:#6b7280">null</span>'); // null
+}
+
+const JsonPreview: React.FC<{ title: string; obj: any }> = ({ title, obj }) => (
+  <details style={{ marginTop: 14 }}>
+    <summary style={{ cursor: "pointer", fontWeight: 700 }}>{title}</summary>
+    <pre
+      style={{
+        whiteSpace: "pre-wrap",
+        fontSize: 12,
+        background: "#0b1020",
+        color: "#e5e7eb",
+        padding: 12,
+        borderRadius: 12,
+        border: "1px solid #111827",
+        marginTop: 10,
+        overflowX: "auto"
+      }}
+      dangerouslySetInnerHTML={{ __html: highlightJson(obj) }}
+    />
+  </details>
+);
 
 function filterProtocolSemanticsOutput(obj: any, unusedPartKeys: Set<string>) {
   const out = deepClone(obj);
@@ -78,10 +137,11 @@ function filterProtocolSemanticsOutput(obj: any, unusedPartKeys: Set<string>) {
   const usedVars = new Set<string>();
   (out?.semantics?.parts || []).forEach((p: any) => {
     const m = p?.meaning?.calibration_csv;
-    if (m && typeof m === "object") {
-      Object.keys(m).forEach((k) => usedVars.add(k));
-    }
+    if (m && typeof m === "object") Object.keys(m).forEach((k) => usedVars.add(k));
+    const l = p?.meaning?.leakage_calibration_csv;
+    if (l && typeof l === "object") Object.keys(l).forEach((k) => usedVars.add(k));
   });
+
   if (Array.isArray(out?.semantics?.calibrations)) {
     out.semantics.calibrations = out.semantics.calibrations.filter((c: any) => {
       const mv = c?.applies_to_machine_var;
@@ -90,6 +150,7 @@ function filterProtocolSemanticsOutput(obj: any, unusedPartKeys: Set<string>) {
     });
     if (!out.semantics.calibrations.length) delete out.semantics.calibrations;
   }
+
   return out;
 }
 
@@ -101,48 +162,6 @@ function filterPortableSemanticsOutput(obj: any) {
   return out;
 }
 
-function syntaxHighlightJson(json: string): string {
-  // Escape HTML
-  let s = json.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  // Basic JSON token highlighter
-  // eslint-disable-next-line no-useless-escape
-  s = s.replace(
-    /(\"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\\"])*\"\s*:)|(\"(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\\"])*\")|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+\-]?\d+)?/g,
-    (match, key) => {
-      if (key) return `<span class=\"json-key\">${match}</span>`;
-      if (match[0] === '"') return `<span class=\"json-string\">${match}</span>`;
-      if (match === "true" || match === "false") return `<span class=\"json-boolean\">${match}</span>`;
-      if (match === "null") return `<span class=\"json-null\">${match}</span>`;
-      return `<span class=\"json-number\">${match}</span>`;
-    }
-  );
-  return s;
-}
-
-const JsonPreview: React.FC<{ title: string; obj: any }> = ({ title, obj }) => {
-  const jsonStr = useMemo(() => JSON.stringify(obj, null, 2), [obj]);
-  return (
-    <details style={{ marginTop: 12 }}>
-      <summary style={{ cursor: "pointer", fontWeight: 700 }}>{title}</summary>
-      <style>{`
-        .json-pre { white-space: pre; font-size: 12px; background: #f9fafb; padding: 12px; border-radius: 12px; border: 1px solid #e5e7eb; overflow: auto; }
-        .json-key { color: #7c3aed; }
-        .json-string { color: #0f766e; }
-        .json-number { color: #b45309; }
-        .json-boolean { color: #1d4ed8; }
-        .json-null { color: #6b7280; }
-      `}</style>
-      <pre className="json-pre" dangerouslySetInnerHTML={{ __html: syntaxHighlightJson(jsonStr) }} />
-    </details>
-  );
-};
-function normalizeSelectedPeco(type: string, raw: string): string {
-  const opts = getPecoOptionsForGroupType(type).filter((o) => !!o.id);
-  if (raw && opts.some((o) => o.id === raw)) return raw;
-  const def = getDefaultPecoIdForGroupType(type);
-  if (def && opts.some((o) => o.id === def)) return def;
-  return opts[0]?.id ?? "";
-}
 export default function SemanticsTab() {
   const profile = useProto((s: any) => s.profile) as string;
   const protocol = useProto((s: any) => s.protocol) as Protocol;
@@ -160,7 +179,8 @@ export default function SemanticsTab() {
     );
     setOverrides({
       pecoByPartKey: initial.pecoByPartKey || {},
-      calibrationByVar: initial.calibrationByVar || {}
+      calibrationByVar: initial.calibrationByVar || {},
+      leakageCalibrationByUpperVar: (initial as any).leakageCalibrationByUpperVar || {}
     });
   }, [lsKey]);
 
@@ -171,14 +191,15 @@ export default function SemanticsTab() {
     } catch {
       // ignore
     }
-  }, [lsKey, overrides]);
+  }, [overrides, lsKey]);
 
-  // When protocol changes, ensure each part has a valid PECO selection.
-  // This also fixes mismatches when switching profiles (indices shift).
+  // Ensure stored PECO IDs remain valid for the current protocol structure and current group types.
+  // This avoids mismatches when switching profiles (indices can shift).
   useEffect(() => {
     const next: SemanticsOverrides = {
       pecoByPartKey: { ...overrides.pecoByPartKey },
-      calibrationByVar: { ...overrides.calibrationByVar }
+      calibrationByVar: { ...overrides.calibrationByVar },
+      leakageCalibrationByUpperVar: { ...(overrides as any).leakageCalibrationByUpperVar }
     };
     let changed = false;
     const seenKeys = new Set<string>();
@@ -232,7 +253,6 @@ export default function SemanticsTab() {
   const protocolSemObj = useMemo(() => filterProtocolSemanticsOutput(protocolSemObjRaw, unusedPartKeys), [protocolSemObjRaw, unusedPartKeys]);
   const portableSemObj = useMemo(() => filterPortableSemanticsOutput(portableSemObjRaw), [portableSemObjRaw]);
 
-
   const Card: React.FC<{ title: string; children: React.ReactNode; right?: React.ReactNode; dimmed?: boolean }> = ({
     title,
     children,
@@ -283,108 +303,28 @@ export default function SemanticsTab() {
         </div>
       </div>
 
-      <Card
-        title="How this tab works"
-        right={
-          <button
-            className="btn"
-            onClick={() => {
-              setOverrides(emptyOverrides());
-              try {
-                window.localStorage.removeItem(LS_KEY);
-              } catch {
-                // ignore
-              }
-            }}
-            style={{ border: "1px solid #e5e7eb", borderRadius: 8, padding: "6px 10px", background: "white" }}
-          >
-            Reset selections
-          </button>
-        }
-      >
-        <div style={{ color: "#374151", lineHeight: 1.5 }}>
-          <div style={{ marginBottom: 10 }}>
-            This tab generates a <b>canonical semantics layer</b> for your current protocol: it keeps the same structure and
-            channel names you already use (so Faketotron can round‑trip), but adds stable scientific meaning.
-          </div>
-          <ul style={{ margin: 0, paddingLeft: 18 }}>
-            <li>
-              Pick a <b>PECO term</b> for each control group (temperature / humidity / CO₂ / each light channel).
-            </li>
-            <li>
-              For <b>light</b> groups, you may optionally provide the <b>calibration CSV filename</b> (SpectraPen regression)
-              so others can map internal % to measured spectrum/PPFD.
-            </li>
-            <li>
-              Groups with <b>no phases</b> or only a <b>const 0</b> placeholder are treated as <b>not used</b>: they are greyed
-              out here and excluded from the exported semantics files.
-            </li>
-          </ul>
-
-          <div style={{ marginTop: 12, padding: 10, borderRadius: 10, background: "#f9fafb" }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Why this tab exists</div>
-            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-              <p style={{ marginTop: 0 }}>
-                <b>protocol.json/.fyt</b> are machine-facing and may contain vendor-specific encodings (e.g. temperature stored as 210).
-                The Semantics tab exports <b>canonical meaning</b> so datasets remain usable outside the PSI ecosystem and across future devices.
-              </p>
-              <p style={{ marginBottom: 0 }}>
-                The exported files keep the same experimental timeline, but add PECO links, spectral hints, and (optional) calibration filenames.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Why PECO selection is manual</div>
-            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-              Ontology terms encode <b>intent</b>, not just numbers. Two labs can run the same 28°C profile but only one considers it “high temperature”.
-              Faketotron can’t infer that baseline safely, so you choose the most accurate term.
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Risk of choosing fine-grained terms</div>
-            <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-              Terms like “high temperature” / “cold temperature” can become misleading if you haven’t defined thresholds.
-              If you’re unsure, pick a broader term (e.g. “temperature exposure”) and document thresholds in your SOP/notes.
-              Overly specific terms can reduce comparability across datasets.
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12 }}>
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Meaning of mapping relations</div>
-            <ul style={{ margin: 0, paddingLeft: 18, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
-              <li><b>exact</b>: the protocol’s intended condition matches the term definition.</li>
-              <li><b>close</b>: very similar, but not perfectly aligned (useful when PECO lacks an exact match).</li>
-              <li><b>broad</b>: the term is more general than your intent (safe fallback when uncertain).</li>
-              <li><b>narrow</b>: the term is more specific than your intent (use only if you’re confident; implies a stronger claim).</li>
-            </ul>
-          </div>
-
-          <div style={{ marginTop: 10, color: "#374151" }}>
-            <b>Downloads</b>:
-            <ul style={{ margin: "6px 0 0", paddingLeft: 18 }}>
-              <li>
-                <b>protocol_semantics.json</b>: includes <b>protocol_canonical</b> (e.g. temperature 210 → 21.0) plus PECO
-                mappings and machine encoding so PSI users can still export back.
-              </li>
-              <li>
-                <b>portable_semantics.json</b>: a vendor‑neutral list of channels and time‑programs (still using % for light
-                control, with spectral hints and optional calibration file references).
-              </li>
-            </ul>
-            <div style={{ marginTop: 6, color: "#6b7280" }}>
-              Note: exports are generated from the current protocol in the store. <b>This tab does not modify protocol.json/.fyt</b>.
-            </div>
-          </div>
+      <div style={{ marginBottom: 14, padding: 12, borderRadius: 12, border: "1px solid #e5e7eb", background: "#fafafa" }}>
+        <div style={{ fontWeight: 800, marginBottom: 6 }}>Scientific semantics</div>
+        <div style={{ color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+          The exported semantics files provide a canonical interpretation of the protocol in terms of environmental treatments (PECO)
+          and mathematically defined control functions. This separates scientific meaning from device-specific encodings, while retaining
+          enough information to support faithful re-export when applicable.
         </div>
-      </Card>
+        <div style={{ marginTop: 10, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+          PECO mappings are curated annotations of experimental intent. Fine-grained terms (e.g., “high temperature”) may depend on biological
+          baselines and laboratory conventions; when uncertain, prefer a broader term.
+        </div>
+        <div style={{ marginTop: 10, color: "#374151", lineHeight: 1.5, fontSize: 14 }}>
+          Mapping relation qualifiers: <b>exact</b> (matches), <b>close</b> (nearly matches), <b>broad</b> (more general), <b>narrow</b> (more specific).
+        </div>
+      </div>
 
       {partsFlat.map(({ si, pi, g }) => {
         const key = partKey(si, pi);
         const unused = unusedPartKeys.has(key);
         const opts = getPecoOptionsForGroupType(g.type);
-        const selected = overrides.pecoByPartKey[key] || getDefaultPecoIdForGroupType(g.type) || "";
+        const selectedRaw = overrides.pecoByPartKey[key] || "";
+        const selected = normalizeSelectedPeco(g.type, selectedRaw);
         const spectral = isLightGroupType(g.type) ? getSpectralHintForGroupType(g.type) : undefined;
 
         return (
@@ -414,6 +354,7 @@ export default function SemanticsTab() {
                 semantics.
               </div>
             )}
+
             <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center" }}>
               <div style={{ color: "#6b7280" }}>Machine vars</div>
               <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>
@@ -444,19 +385,18 @@ export default function SemanticsTab() {
                     </option>
                   ))}
                 </select>
+
                 {selected?.startsWith("PECO:") && (
-                  <a
-                    href={`https://browser.planteome.org/amigo/term/${selected}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    style={{
-                      color: "#2563eb",
-                      textDecoration: "none",
-                      fontSize: 12
-                    }}
-                  >
-                    Open in PECO browser ↗
-                  </a>
+                  <div style={{ marginTop: 6 }}>
+                    <a
+                      href={`https://browser.planteome.org/amigo/term/${selected}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{ color: "#2563eb", textDecoration: "none", fontSize: 12 }}
+                    >
+                      View term definition in PECO ↗
+                    </a>
+                  </div>
                 )}
               </div>
 
@@ -485,30 +425,51 @@ export default function SemanticsTab() {
             {isLightGroupType(g.type) && (
               <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px dashed #e5e7eb" }}>
                 <div style={{ fontWeight: 700, marginBottom: 8 }}>
-                  Optional calibration CSV filename (SpectraPen regression)
+                  Optional calibration CSV filename(s)
                 </div>
-                <div style={{ color: "#6b7280", marginBottom: 10 }}>
-                  Leave blank if you don’t have the file. You can enter a filename like <code>CoolWhite1.csv</code>.
+                <div style={{ color: "#6b7280", marginBottom: 10, lineHeight: 1.4 }}>
+                  SpectraPen regression calibration is used to interpret <b>% driver output</b> in physical units. Leakage calibration (upper → lower shelf) is optional and
+                  should only be provided when empirically relevant.
                 </div>
 
                 {(g.vars || []).map((v: string) => (
-                  <div
-                    key={v}
-                    style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center", marginBottom: 8 }}
-                  >
-                    <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{v}</div>
-                    <input
-                      value={overrides.calibrationByVar[v] || ""}
-                      disabled={unused}
-                      onChange={(e) =>
-                        setOverrides((s) => ({
-                          ...s,
-                          calibrationByVar: { ...s.calibrationByVar, [v]: e.target.value }
-                        }))
-                      }
-                      placeholder={`${v}.csv`}
-                      style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb" }}
-                    />
+                  <div key={v} style={{ marginBottom: 10 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center" }}>
+                      <div style={{ fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}>{v}</div>
+                      <input
+                        value={overrides.calibrationByVar[v] || ""}
+                        disabled={unused}
+                        onChange={(e) =>
+                          setOverrides((s) => ({
+                            ...s,
+                            calibrationByVar: { ...s.calibrationByVar, [v]: e.target.value }
+                          }))
+                        }
+                        placeholder={`${v}.csv`}
+                        style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb" }}
+                      />
+                    </div>
+
+                    {isUpperShelfVar(v) && (
+                      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 10, alignItems: "center", marginTop: 8 }}>
+                        <div style={{ color: "#6b7280", fontSize: 12 }}>Leakage (upper → lower)</div>
+                        <input
+                          value={(overrides as any).leakageCalibrationByUpperVar?.[v] || ""}
+                          disabled={unused}
+                          onChange={(e) =>
+                            setOverrides((s) => ({
+                              ...s,
+                              leakageCalibrationByUpperVar: {
+                                ...(s as any).leakageCalibrationByUpperVar,
+                                [v]: e.target.value
+                              }
+                            }))
+                          }
+                          placeholder={leakagePlaceholder(v)}
+                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #e5e7eb" }}
+                        />
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

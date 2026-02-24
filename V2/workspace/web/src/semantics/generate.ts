@@ -1,4 +1,4 @@
-import type { Protocol, Group, Phase } from "../profiles";
+import type { Protocol } from "../profiles";
 import { RANGES } from "../ranges";
 import { parseDurationToSeconds } from "../utils/time";
 import {
@@ -11,19 +11,24 @@ import {
   type PecoOption,
   type SpectralHint
 } from "./mappings";
+import { PROTOCOL_SEMANTICS_SCHEMA, PORTABLE_SEMANTICS_SCHEMA } from "./schemaVersion";
 
 export type SemanticsOverrides = {
   /** key: `${sectionIdx}:${partIdx}` */
   pecoByPartKey: Record<string, string>;
-  /** key: machine var (e.g., CoolWhite1) -> calibration CSV filename */
+  /** key: machine var (e.g., CoolWhite1) -> SpectraPen regression calibration CSV filename */
   calibrationByVar: Record<string, string>;
+  /** key: upper-shelf machine var (e.g., CoolWhite2) -> leakage calibration CSV filename (upper -> lower), optional */
+  leakageCalibrationByUpperVar: Record<string, string>;
 };
 
 export function emptyOverrides(): SemanticsOverrides {
-  return { pecoByPartKey: {}, calibrationByVar: {} };
+  return { pecoByPartKey: {}, calibrationByVar: {}, leakageCalibrationByUpperVar: {} };
 }
 
 // --- Canonical math meaning for curve primitives (v0.1) ---
+// These definitions document the intended continuous-time meaning of phase primitives.
+// Devices may approximate these targets via discrete command updates (phase.step).
 const CURVE_DEFINITIONS_V0_1 = {
   time_model: {
     description:
@@ -54,15 +59,58 @@ const CURVE_DEFINITIONS_V0_1 = {
     ]
   },
 
+  sine: {
+    description:
+      "Sine is specified using (min,max,period,phaseOffset) and is convertible to standard form y(t)=A sin(ωt+φ)+C.",
+    standard_form: {
+      formula: "y(t)=A sin(ωt+φ)+C",
+      A: "(Max-Min)/2",
+      omega: "2π/Period",
+      phi: "2π*Offset/Period",
+      C: "(Max+Min)/2"
+    }
+  },
+
+  csv_import: {
+    description: "Explicit (time,value) point series with declared interpolation in downstream tools."
+  },
+
   command_interval: {
     description:
       "When phase.step exists, it indicates command updates every Δt seconds. Devices typically hold the last commanded value between updates.",
     canonical_sampling: {
       description:
         "A canonical discretization is: at k=0..N, t_k = t0 + kΔt, command_k = y(t_k), and hold until next update.",
-      variables: { Δt: "phase.step (seconds)" }
+      variables: { "Δt": "phase.step (seconds)" }
     }
   }
+} as const;
+
+
+function ucumFromSourceUnit(sourceUnit: string): string {
+  const u = (sourceUnit || "").toLowerCase().trim();
+  // protocol.json uses non-UCUM labels like "celsius"/"percent"/"ppm"
+  if (u === "celsius") return "Cel";
+  if (u === "percent") return "%";
+  if (u === "ppm") return "ppm";
+  // Fallback: assume it is already a UCUM code.
+  return sourceUnit;
+}
+
+const SPECTRAL_REGRESSION_MODEL_V0_1 = {
+  kind: "per_wavelength_linear_regression",
+  regression_equation: "E(λ) = A(λ) * p + b(λ)",
+  input_unit: "%",
+  output_unit: "umol.m-2.s-1.nm-1",
+  csv_columns: { wavelength_nm: "wavelength_nm", A: "A", b: "b" }
+} as const;
+
+const LEAKAGE_MODEL_CONSTANTS_V0_1 = {
+  kind: "upper_to_lower_spectral_additive_regression",
+  composition_equation: "E_low_actual(λ) = E_low_set(λ) + E_leak(λ)",
+  leak_regression_equation: "E_leak(λ) = A(λ) * p_upper + b(λ)",
+  wavelength_nm_range: { min: 315, max: 800 },
+  output_unit: "umol.m-2.s-1.nm-1"
 } as const;
 
 function deepClone<T>(x: T): T {
@@ -170,6 +218,10 @@ function partKey(sectionIdx: number, partIdx: number): string {
   return `${sectionIdx}:${partIdx}`;
 }
 
+function shelfForMachineVar(machineVar: string): "lower" | "upper" {
+  return /2$/.test(machineVar) ? "upper" : "lower";
+}
+
 function selectedPecoForPart(type: string, key: string, overrides: SemanticsOverrides): PecoOption {
   const chosen = overrides.pecoByPartKey[key] || getDefaultPecoIdForGroupType(type);
   const opts = getPecoOptionsForGroupType(type);
@@ -217,10 +269,20 @@ export function buildProtocolSemantics(
       const encoding = machineEncodingForGroup(g);
 
       const calibration_csv: Record<string, string> = {};
-      if (isLightGroupType(g.type) && Array.isArray(g.vars)) {
+      const shelf_by_var: Record<string, "lower" | "upper"> = {};
+      const leakage_calibration_csv: Record<string, string> = {};
+
+      if (Array.isArray(g.vars)) {
         for (const v of g.vars) {
+          shelf_by_var[v] = shelfForMachineVar(v);
+
           const fn = overrides.calibrationByVar[v];
-          if (fn) calibration_csv[v] = fn;
+          if (isLightGroupType(g.type) && fn) calibration_csv[v] = fn;
+
+          const leakFn = overrides.leakageCalibrationByUpperVar?.[v];
+          if (isLightGroupType(g.type) && shelf_by_var[v] === "upper" && typeof leakFn === "string" && leakFn.trim()) {
+            leakage_calibration_csv[v] = leakFn.trim();
+          }
         }
       }
 
@@ -233,7 +295,25 @@ export function buildProtocolSemantics(
             source_device: "PSI SpectraPen",
             file_ref,
             wavelength_nm_range: { min: 315, max: 800 },
+            model: SPECTRAL_REGRESSION_MODEL_V0_1,
             applies_to_machine_var: machine_var
+          });
+        }
+      }
+
+      
+      // Optional registry entries for leakage calibration files (upper shelf -> lower shelf; light only)
+      if (Object.keys(leakage_calibration_csv).length) {
+        for (const [upper_machine_var, file_ref] of Object.entries(leakage_calibration_csv)) {
+          cals.push({
+            id: `cal:leakage:${upper_machine_var}`,
+            kind: "upper_to_lower_light_leakage",
+            source_device: "PSI SpectraPen",
+            file_ref,
+            wavelength_nm_range: { min: 315, max: 800 },
+            composition_equation: LEAKAGE_MODEL_CONSTANTS_V0_1.composition_equation,
+            model: SPECTRAL_REGRESSION_MODEL_V0_1,
+            applies_to_machine_var: upper_machine_var
           });
         }
       }
@@ -254,11 +334,31 @@ export function buildProtocolSemantics(
             ...extraLightTerms.map(t => ({ id: t.id, label: t.label, relation: t.relation }))
           ].filter(x => x.id),
           spectral_hint: spectral,
-          calibration_csv: Object.keys(calibration_csv).length ? calibration_csv : undefined
+          shelf_by_var: Object.keys(shelf_by_var).length ? shelf_by_var : undefined,
+          calibration_csv: Object.keys(calibration_csv).length ? calibration_csv : undefined,
+          leakage_calibration_csv: Object.keys(leakage_calibration_csv).length ? leakage_calibration_csv : undefined,
+          leakage_to_lower_by_upper_var: Object.keys(leakage_calibration_csv).length
+            ? Object.fromEntries(
+                Object.entries(leakage_calibration_csv).map(([upperVar, csv]) => {
+                  const base = upperVar.replace(/2$/, "");
+                  const candidates = Array.isArray(g.vars)
+                    ? g.vars.filter((vv: string) => vv === base || vv === `${base}1`)
+                    : [];
+                  return [
+                    upperVar,
+                    {
+                      ...LEAKAGE_MODEL_CONSTANTS_V0_1,
+                      calibration_csv: csv,
+                      target_lower_var_candidates: candidates
+                    }
+                  ];
+                })
+              )
+            : undefined
         },
         encoding: {
-          canonical_unit: g.unit,
-          source_unit: g.unit,
+          canonical_unit: ucumFromSourceUnit(g.unit),
+          source_unit: ucumFromSourceUnit(g.unit),
           machine_encoding: encoding
         },
         program_hints: {
@@ -283,7 +383,7 @@ export function buildProtocolSemantics(
   });
 
   return {
-    schema: { name: "faketotron.protocol_semantics", version: "0.1.0" },
+    schema: PROTOCOL_SEMANTICS_SCHEMA,
     generated_at: new Date().toISOString(),
     execution_context: { profile_key: profileKey },
 
@@ -365,10 +465,26 @@ export function buildPortableSemantics(
           id,
           kind,
           light_channel: kind === "light" ? portableLightChannelFromType(g.type) : undefined,
-          unit: g.unit,
+          unit: ucumFromSourceUnit(g.unit),
           peco_terms: peco_terms.map(t => ({ id: t.id, label: t.label, relation: t.relation })),
           spectral_hint: spectral,
           calibration_csv: calibration_csv || undefined,
+          shelf:
+            kind === "light"
+              ? (/2$/.test(mv) ? "upper" : "lower")
+              : undefined,
+          leakage_to_lower:
+            kind === "light" && /2$/.test(mv)
+              ? (() => {
+                  const fn = overrides?.leakageCalibrationByUpperVar?.[mv];
+                  return fn && fn.trim()
+                    ? {
+                        ...LEAKAGE_MODEL_CONSTANTS_V0_1,
+                        calibration_csv: fn.trim()
+                      }
+                    : undefined;
+                })()
+              : undefined,
           program
         });
       }
@@ -376,7 +492,7 @@ export function buildPortableSemantics(
   });
 
   return {
-    schema: { name: "faketotron.portable_semantics", version: "0.1.0" },
+    schema: PORTABLE_SEMANTICS_SCHEMA,
     generated_at: new Date().toISOString(),
     execution_context: { profile_key: profileKey },
     curve_definitions: CURVE_DEFINITIONS_V0_1,
