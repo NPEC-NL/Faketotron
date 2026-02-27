@@ -307,13 +307,15 @@ function convertSpectrumToUmol(pts: SpectrumPoint[]): SpectrumPoint[] {
   return pts.map(p => ({ nm: p.nm, ee: toUmol(p.ee, p.nm) }));
 }
 
-/** Integrate spectrum via trapezoidal rule → total µmol/(s·m²). */
-function integrateSpectrum(pts: SpectrumPoint[]): number {
-  if (pts.length < 2) return pts.length === 1 ? pts[0].ee : 0;
+/** Integrate spectrum via trapezoidal rule → total µmol/(s·m²).
+ *  If minNm / maxNm are provided, only wavelengths in that range are included. */
+function integrateSpectrum(pts: SpectrumPoint[], minNm = 0, maxNm = Infinity): number {
+  const filtered = pts.filter(p => p.nm >= minNm && p.nm <= maxNm);
+  if (filtered.length < 2) return filtered.length === 1 ? filtered[0].ee : 0;
   let sum = 0;
-  for (let i = 1; i < pts.length; i++) {
-    const dLambda = pts[i].nm - pts[i - 1].nm;
-    sum += 0.5 * (pts[i].ee + pts[i - 1].ee) * dLambda;
+  for (let i = 1; i < filtered.length; i++) {
+    const dLambda = filtered[i].nm - filtered[i - 1].nm;
+    sum += 0.5 * (filtered[i].ee + filtered[i - 1].ee) * dLambda;
   }
   return sum;
 }
@@ -563,6 +565,8 @@ export default function LightTools() {
   const [jetiRefFile, setJetiRefFile] = useState("");
   const [jetiRefError, setJetiRefError] = useState("");
   const [specSliders, setSpecSliders] = useState<Record<string, number>>({});
+  const [parMinNm, setParMinNm] = useState(400);
+  const [parMaxNm, setParMaxNm] = useState(700);
 
   function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -641,20 +645,20 @@ export default function LightTools() {
     return result;
   }, [lampCal, activeRoom, specSliders]);
 
-  // PAR per channel (integrated µmol/(s·m²))
+  // PAR per channel (integrated µmol/(s·m²)) filtered by wavelength range
   const channelPAR = useMemo(() => {
     const result: Record<string, number> = {};
     for (const key of Object.keys(channelSpectra)) {
-      result[key] = integrateSpectrum(channelSpectra[key]);
+      result[key] = integrateSpectrum(channelSpectra[key], parMinNm, parMaxNm);
     }
     return result;
-  }, [channelSpectra]);
+  }, [channelSpectra, parMinNm, parMaxNm]);
 
   // Total PAR from reconstructed spectrum
-  const reconstructedPAR = useMemo(() => integrateSpectrum(reconstructed), [reconstructed]);
+  const reconstructedPAR = useMemo(() => integrateSpectrum(reconstructed, parMinNm, parMaxNm), [reconstructed, parMinNm, parMaxNm]);
 
   // Jeti reference PAR
-  const jetiRefPAR = useMemo(() => integrateSpectrum(jetiRefUmol), [jetiRefUmol]);
+  const jetiRefPAR = useMemo(() => integrateSpectrum(jetiRefUmol, parMinNm, parMaxNm), [jetiRefUmol, parMinNm, parMaxNm]);
 
   // ===== Render =====
   return (
@@ -807,7 +811,7 @@ export default function LightTools() {
             {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
             {jetiRef.length > 0 && (
               <div className="text-xs text-green-700">
-                ✓ {jetiRef.length} points loaded — Reference PAR: <b>{jetiRefPAR.toFixed(1)}</b> µmol/(s·m²)
+                ✓ {jetiRef.length} points loaded — Reference PAR ({parMinNm}–{parMaxNm} nm): <b>{jetiRefPAR.toFixed(1)}</b> µmol/(s·m²)
               </div>
             )}
           </div>
@@ -816,7 +820,26 @@ export default function LightTools() {
         {/* Channel intensity sliders (5 % steps) */}
         {lampCal && activeRoom && (
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
-            <label className="block text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <label className="text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
+              <div className="flex items-center gap-1 text-sm">
+                <span className="text-slate-600">Integrate</span>
+                <input
+                  type="number" min={200} max={1100}
+                  value={parMinNm}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMinNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
+                  className="w-16 border rounded p-1 text-sm text-center font-mono"
+                />
+                <span className="text-slate-600">–</span>
+                <input
+                  type="number" min={200} max={1100}
+                  value={parMaxNm}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMaxNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
+                  className="w-16 border rounded p-1 text-sm text-center font-mono"
+                />
+                <span className="text-slate-600">nm</span>
+              </div>
+            </div>
             {activeRoom.channels.map((ch) => (
               <div key={ch.key} className="flex items-center gap-2">
                 <div className="w-24 text-sm font-medium truncate" style={{ color: ch.color }}>{ch.label}</div>
@@ -824,7 +847,7 @@ export default function LightTools() {
                   type="range" min={0} max={100} step={1}
                   value={specSliders[ch.key] ?? 50}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpecSliders((prev) => ({ ...prev, [ch.key]: parseInt(e.target.value, 10) }))}
-                  className="flex-1 max-w-[280px]"
+                  className="flex-1 max-w-[420px]"
                 />
                 <input
                   type="number" min={0} max={100}
@@ -833,11 +856,11 @@ export default function LightTools() {
                   className="w-14 border rounded p-1 text-sm text-right font-mono"
                 />
                 <span className="text-xs">%</span>
-                <span className="text-xs text-slate-500 w-40 text-right">PAR: <b>{(channelPAR[ch.key] ?? 0).toFixed(1)}</b> µmol/(s·m²)</span>
+                <span className="text-sm font-semibold text-slate-700 w-48 text-right">{(channelPAR[ch.key] ?? 0).toFixed(1)} µmol/(s·m²)</span>
               </div>
             ))}
-            <div className="pt-2 border-t text-sm font-bold">
-              Total PAR (sum over wavelengths): {reconstructedPAR.toFixed(1)} µmol/(s·m²)
+            <div className="pt-2 border-t text-base font-bold">
+              Total ({parMinNm}–{parMaxNm} nm): {reconstructedPAR.toFixed(1)} µmol/(s·m²)
             </div>
           </div>
         )}
