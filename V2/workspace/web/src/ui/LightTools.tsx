@@ -665,29 +665,43 @@ export default function LightTools() {
     <div className="space-y-5">
       {/* Info box */}
       <div className="border border-blue-300 bg-blue-50 rounded-lg p-4 space-y-3">
-        <h3 className="font-semibold text-lg text-blue-900">Spectrum Lab — Reconstruct &amp; Compare</h3>
+        <h3 className="font-semibold text-lg text-blue-900">Spectrum Lab - Reconstruct &amp; Compare</h3>
         <div className="text-sm text-slate-700 space-y-2">
           <p>
-            Upload the <strong>lamp calibration CSV</strong> for your room (G4–G8) to reconstruct
-            the emitted spectrum at any combination of channel intensities. The calibration file
-            contains Jeti spectroradiometer measurements at 5 % intensity steps for each lamp
+            Upload the lamp calibration CSV for your room (G4-G8) to reconstruct the emitted
+            spectrum at any combination of channel intensities. The calibration file contains
+            Jeti spectroradiometer measurements at 5&thinsp;% intensity steps for each lamp
             channel; values in between are linearly interpolated.
           </p>
           <p>
-            Optionally, upload a <strong>Jeti reference measurement</strong> to overlay the
-            measured spectrum on top of the reconstruction for direct comparison.
+            The calibration files for all rooms are available on{" "}
+            <a
+              href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing"
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-700 underline"
+            >
+              this Google Drive folder
+            </a>
+            . The filename includes the room name (e.g. G4) so the room is detected automatically
+            when you upload the file.
           </p>
           <p>
-            The <strong>integrated PAR</strong> (µmol/(s·m²)) is computed over the wavelength
-            range you specify (default 400–700 nm). Change the range to include far-red or
-            UV as needed.
+            You can optionally upload a Jeti reference measurement to overlay on top of the
+            reconstruction. This can be a spectrum you measured yourself, a result from a previous
+            experiment, or any other Jeti export in the same semicolon-delimited format.
           </p>
-          <div className="mt-3 space-y-1 border-t border-blue-200 pt-3">
-            <h4 className="font-semibold text-blue-800">More Posters &amp; Raw Spectra</h4>
+          <p>
+            The integrated value (&micro;mol/(s&middot;m&sup2;)) is computed over the wavelength range you
+            specify below the sliders. The default is 400-700&thinsp;nm (PAR), but you can change
+            it to include far-red or a wider range as needed.
+          </p>
+          <div className="border-t border-blue-200 pt-3 mt-1 space-y-1">
+            <h4 className="font-semibold text-blue-800">More posters &amp; raw spectra</h4>
             <p>
-              For additional posters hanging in the NPEC building, including raw spectral data
-              and calculated ratios B(400–500):R(600–700) and R(655–665):FR(725–735), visit
-              the shared folder{" "}
+              For additional posters in the NPEC building, including raw spectral data and
+              calculated ratios B(400-500):R(600-700) and R(655-665):FR(725-735), visit the
+              shared folder{" "}
               <a
                 href="https://drive.google.com/drive/folders/1xWC8XHK52TAQp51PZiaLiuDlUalp0QaL?usp=sharing"
                 target="_blank"
@@ -704,49 +718,35 @@ export default function LightTools() {
 
       {/* File pickers */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="space-y-2">
-            <label className="block text-sm font-medium">Lamp Calibration CSV</label>
-            <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside">
-              <li>
-                Download the calibration file for your room from{" "}
-                <a
-                  href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-blue-600 underline"
-                >
-                  this Google Drive folder
-                </a>
-                {" "}(G4, G5, G6, G7 or G8, with 5 % increments for each channel). The filename includes the room name (e.g. G4) for auto-detection of the room.
-              </li>
-              <li>Upload that file below:</li>
-            </ol>
-            <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
-            {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
-            {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
-            {lampCal && activeRoom && (
-              <div className="text-xs text-green-700">
-                ✓ Loaded — {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {activeRoom.channels.length} channels × 20 levels — Calibration loaded: <strong>{activeRoom.id}</strong>
-              </div>
-            )}
-          </div>
-          <div className="space-y-1">
-            <label className="block text-sm font-medium">Jeti Reference Spectrum (optional)</label>
-            <p className="text-xs text-slate-500 mb-1">
-              Load a Jeti spectroradiometer export (.csv, semicolon-delimited, comma as decimal
-              separator). The first Ee column is used as a reference and shown as a dashed overlay
-              on the reconstructed spectrum chart for direct comparison with predicted output.
-            </p>
-            <input type="file" accept=".csv" onChange={onJetiRefFileChosen} className="text-sm" />
-            {jetiRefFile && <div className="text-xs text-slate-500">{jetiRefFile}</div>}
-            {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
-            {jetiRef.length > 0 && (
-              <div className="text-xs text-green-700">
-                ✓ {jetiRef.length} points loaded — Reference PAR ({parMinNm}–{parMaxNm} nm): <b>{jetiRefPAR.toFixed(1)}</b> µmol/(s·m²)
-              </div>
-            )}
-          </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Lamp calibration CSV</label>
+          <p className="text-xs text-slate-500">Download the file for your room from the Google Drive link above, then upload it here.</p>
+          <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
+          {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
+          {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
+          {lampCal && activeRoom && (
+            <div className="text-xs text-green-700">
+              Loaded - {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {activeRoom.channels.length} channels x 20 levels - room: {activeRoom.id}
+            </div>
+          )}
         </div>
+        <div className="space-y-2">
+          <label className="block text-sm font-medium">Jeti reference spectrum (optional)</label>
+          <p className="text-xs text-slate-500">
+            A Jeti export from this room, a previous experiment, or any other measurement you
+            want to compare against. Must be a semicolon-delimited CSV with a
+            Wavelength&thinsp;[nm] and Ee&thinsp;[W/(sqm*nm)] column.
+          </p>
+          <input type="file" accept=".csv" onChange={onJetiRefFileChosen} className="text-sm" />
+          {jetiRefFile && <div className="text-xs text-slate-500">{jetiRefFile}</div>}
+          {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
+          {jetiRef.length > 0 && (
+            <div className="text-xs text-green-700">
+              {jetiRef.length} points loaded - reference ({parMinNm}-{parMaxNm} nm): {jetiRefPAR.toFixed(1)} µmol/(s·m²)
+            </div>
+          )}
+        </div>
+      </div>
 
         {/* Channel intensity sliders (5 % steps) */}
         {lampCal && activeRoom && (
@@ -802,7 +802,7 @@ export default function LightTools() {
         {/* Overlay chart: reconstructed vs measured */}
         {overlayData.length > 0 && (
           <div className="border rounded-lg p-3">
-            <div className="font-medium">Spectrum Overlay — Reconstructed vs Measured</div>
+            <div className="font-medium">Spectrum Overlay - Reconstructed vs Measured</div>
             <div className="h-[560px] w-full mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={overlayData} margin={{ top: 10, right: 20, bottom: 10, left: 10 }}>
