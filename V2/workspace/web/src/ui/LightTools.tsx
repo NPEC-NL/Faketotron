@@ -720,9 +720,9 @@ export default function LightTools() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="space-y-2">
           <label className="block text-sm font-medium">Lamp calibration CSV</label>
-          <p className="text-xs">
+          <p className="text-xs text-slate-500">Download the file for your room from{" "}
             <a href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing" target="_blank" rel="noreferrer" className="text-blue-700 underline">Google Drive Folder</a>
-          </p>
+            , then upload it here.</p>
           <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
           {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
           {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
