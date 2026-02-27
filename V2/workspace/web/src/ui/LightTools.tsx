@@ -24,6 +24,68 @@ const CHANNEL_COLORS: Record<string, string> = {
 };
 const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
 
+// ===== Room configuration for Spectrum Lab =====
+type RoomChannelConfig = { key: string; label: string; color: string };
+type RoomConfig = { id: string; channels: RoomChannelConfig[] };
+
+const ROOM_CONFIGS: Record<string, RoomConfig> = {
+  G4: {
+    id: "G4",
+    channels: [
+      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
+      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
+      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
+    ],
+  },
+  G5: {
+    id: "G5",
+    channels: [
+      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
+      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
+      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
+    ],
+  },
+  G6: {
+    id: "G6",
+    channels: [
+      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
+      { key: "deepRed",   label: "Red",        color: "#e03131" },
+      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
+    ],
+  },
+  G7: {
+    id: "G7",
+    channels: [
+      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
+      { key: "blue",      label: "Blue",       color: "#3b82f6" },
+      { key: "cyan",      label: "Cyan",       color: "#06b6d4" },
+      { key: "green",     label: "Green",      color: "#22c55e" },
+      { key: "amber",     label: "Amber",      color: "#f59e0b" },
+      { key: "red",       label: "Red",        color: "#ef4444" },
+      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
+      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
+    ],
+  },
+  G8: {
+    id: "G8",
+    channels: [
+      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
+      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
+      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
+    ],
+  },
+};
+
+/** Detect room from calibration CSV filename. */
+function detectRoom(filename: string): RoomConfig | null {
+  const upper = filename.toUpperCase();
+  // Check longer names first to avoid G7 matching "G7x" vs "G7"
+  for (const key of ["G8", "G7", "G6", "G5", "G4"]) {
+    if (upper.includes(key)) return ROOM_CONFIGS[key];
+  }
+  return null;
+}
+
 // ===== Default data (existing calibration) =====
 // Each room now has separate PAR and Full spectrum entries in the dropdown
 const DEFAULT_PRESETS: Preset[] = [
@@ -231,14 +293,19 @@ function clamp(x: number, lo = 0, hi = 100) {
 // ===== Spectrum Lab types & helpers =====
 type SpectrumPoint = { nm: number; ee: number };
 
-type LampCalibrationData = {
-  coolWhite: SpectrumPoint[][]; // 20 spectra: index 0→5%, 1→10%, …, 19→100%
-  deepRed: SpectrumPoint[][];
-  farRed: SpectrumPoint[][];
-};
+/**
+ * Lamp calibration data: channel key → array of 20 spectra (5 %, 10 %, …, 100 %).
+ * For G4/G5/G6/G8: { coolWhite, deepRed, farRed }
+ * For G7: { coolWhite, blue, cyan, green, amber, red, deepRed, farRed }
+ */
+type LampCalibrationData = Record<string, SpectrumPoint[][]>;
 
-/** Parse a Jeti multi-measurement CSV (e.g. G4_5%_increments_3_lamps.csv). */
-function parseLampCalibrationCsv(text: string): LampCalibrationData {
+/**
+ * Parse a Jeti multi-measurement CSV for any room.
+ * The room config determines how many channels and thus how many column groups
+ * (each group = 20 levels at 5 % increments).
+ */
+function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCalibrationData {
   const lines = text.split(/\r?\n/);
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
@@ -246,27 +313,32 @@ function parseLampCalibrationCsv(text: string): LampCalibrationData {
   }
   if (headerIdx < 0) throw new Error("Header 'Wavelength [nm]' not found");
 
-  const coolWhite: SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
-  const deepRed:   SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
-  const farRed:    SpectrumPoint[][] = Array.from({ length: 20 }, () => []);
+  const numChannels = roomConfig.channels.length;
+  const levelsPerChannel = 20;
+  const totalDataCols = numChannels * levelsPerChannel;
+
+  const data: LampCalibrationData = {};
+  for (const ch of roomConfig.channels) {
+    data[ch.key] = Array.from({ length: levelsPerChannel }, () => []);
+  }
 
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const parts = line.split(";");
-    if (parts.length < 61) continue;
+    if (parts.length < totalDataCols + 1) continue;
     const nm = parseInt(parts[0], 10);
     if (isNaN(nm)) continue;
-    for (let j = 0; j < 20; j++) {
-      const cw = parseFloat(parts[1 + j].replace(",", "."));
-      const dr = parseFloat(parts[21 + j].replace(",", "."));
-      const fr = parseFloat(parts[41 + j].replace(",", "."));
-      coolWhite[j].push({ nm, ee: isNaN(cw) ? 0 : cw });
-      deepRed[j].push({  nm, ee: isNaN(dr) ? 0 : dr });
-      farRed[j].push({   nm, ee: isNaN(fr) ? 0 : fr });
+    for (let chIdx = 0; chIdx < numChannels; chIdx++) {
+      const chKey = roomConfig.channels[chIdx].key;
+      const baseCol = 1 + chIdx * levelsPerChannel;
+      for (let j = 0; j < levelsPerChannel; j++) {
+        const val = parseFloat(parts[baseCol + j].replace(",", "."));
+        data[chKey][j].push({ nm, ee: isNaN(val) ? 0 : val });
+      }
     }
   }
-  return { coolWhite, deepRed, farRed };
+  return data;
 }
 
 /** Parse a single Jeti measurement CSV (first Ee column only). */
@@ -325,19 +397,21 @@ function spectrumAtPercent(spectra: SpectrumPoint[][], pct: number): SpectrumPoi
   }));
 }
 
-/** Sum three channel spectra at given percentages into one combined spectrum. */
+/** Sum all channel spectra at given percentages into one combined spectrum. */
 function reconstructSpectrum(
   cal: LampCalibrationData,
-  cwPct: number,
-  drPct: number,
-  frPct: number,
+  percents: Record<string, number>,
 ): SpectrumPoint[] {
-  const cw = spectrumAtPercent(cal.coolWhite, cwPct);
-  const dr = spectrumAtPercent(cal.deepRed, drPct);
-  const fr = spectrumAtPercent(cal.farRed, frPct);
-  return cw.map((p, i) => ({
+  const channelKeys = Object.keys(cal);
+  if (channelKeys.length === 0) return [];
+
+  const channelSpectra = channelKeys.map(key =>
+    spectrumAtPercent(cal[key], percents[key] ?? 0)
+  );
+
+  return channelSpectra[0].map((p, i) => ({
     nm: p.nm,
-    ee: p.ee + (dr[i]?.ee ?? 0) + (fr[i]?.ee ?? 0),
+    ee: channelSpectra.reduce((sum, sp) => sum + (sp[i]?.ee ?? 0), 0),
   }));
 }
 
@@ -448,22 +522,34 @@ export default function LightTools() {
   const [lampCal, setLampCal] = useState<LampCalibrationData | null>(null);
   const [lampCalFile, setLampCalFile] = useState("");
   const [lampCalError, setLampCalError] = useState("");
+  const [activeRoom, setActiveRoom] = useState<RoomConfig | null>(null);
   const [jetiRef, setJetiRef] = useState<SpectrumPoint[]>([]);
   const [jetiRefFile, setJetiRefFile] = useState("");
   const [jetiRefError, setJetiRefError] = useState("");
-  const [slCW, setSlCW] = useState(50);
-  const [slDR, setSlDR] = useState(50);
-  const [slFR, setSlFR] = useState(50);
+  const [specSliders, setSpecSliders] = useState<Record<string, number>>({});
 
   function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
     setLampCalFile(file.name);
     setLampCalError("");
+    const detected = detectRoom(file.name);
+    if (!detected) {
+      setLampCalError("Could not detect room from filename. Expected G4, G5, G6, G7 or G8 in the filename.");
+      setLampCal(null);
+      setActiveRoom(null);
+      return;
+    }
+    setActiveRoom(detected);
+    // Initialize sliders to 50 % for all channels of the detected room
+    const initSliders: Record<string, number> = {};
+    for (const ch of detected.channels) initSliders[ch.key] = 50;
+    setSpecSliders(initSliders);
+
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        setLampCal(parseLampCalibrationCsv(reader.result as string));
+        setLampCal(parseLampCalibrationCsv(reader.result as string, detected));
       } catch (err: any) {
         setLampCalError(err.message ?? "Parse error");
         setLampCal(null);
@@ -491,8 +577,8 @@ export default function LightTools() {
 
   const reconstructed = useMemo(() => {
     if (!lampCal) return [] as SpectrumPoint[];
-    return reconstructSpectrum(lampCal, slCW, slDR, slFR);
-  }, [lampCal, slCW, slDR, slFR]);
+    return reconstructSpectrum(lampCal, specSliders);
+  }, [lampCal, specSliders]);
 
   const overlayData = useMemo(() => {
     if (!reconstructed.length && !jetiRef.length) return [];
@@ -507,13 +593,15 @@ export default function LightTools() {
   }, [reconstructed, jetiRef]);
 
   const channelSpectra = useMemo(() => {
-    if (!lampCal) return { cw: [] as SpectrumPoint[], dr: [] as SpectrumPoint[], fr: [] as SpectrumPoint[] };
-    return {
-      cw: spectrumAtPercent(lampCal.coolWhite, slCW),
-      dr: spectrumAtPercent(lampCal.deepRed, slDR),
-      fr: spectrumAtPercent(lampCal.farRed, slFR),
-    };
-  }, [lampCal, slCW, slDR, slFR]);
+    if (!lampCal || !activeRoom) return {} as Record<string, SpectrumPoint[]>;
+    const result: Record<string, SpectrumPoint[]> = {};
+    for (const ch of activeRoom.channels) {
+      if (lampCal[ch.key]) {
+        result[ch.key] = spectrumAtPercent(lampCal[ch.key], specSliders[ch.key] ?? 0);
+      }
+    }
+    return result;
+  }, [lampCal, activeRoom, specSliders]);
 
   // ===== Render =====
   return (
@@ -648,9 +736,9 @@ export default function LightTools() {
             <input type="file" accept=".csv" onChange={onLampCalFileChosen} className="text-sm" />
             {lampCalFile && <div className="text-xs text-slate-500">{lampCalFile}</div>}
             {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
-            {lampCal && (
+            {lampCal && activeRoom && (
               <div className="text-xs text-green-700">
-                ✓ Loaded — {lampCal.coolWhite[0]?.length ?? 0} wavelengths, 3 channels × 20 levels
+                ✓ Loaded — {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {activeRoom.channels.length} channels × 20 levels — Calibration loaded: <strong>{activeRoom.id}</strong>
               </div>
             )}
           </div>
@@ -671,26 +759,22 @@ export default function LightTools() {
         </div>
 
         {/* Channel intensity sliders (5 % steps) */}
-        {lampCal && (
+        {lampCal && activeRoom && (
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
             <label className="block text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
-            {[
-              { label: "Cool White", value: slCW, set: setSlCW, color: CHANNEL_COLORS.coolWhite },
-              { label: "Deep Red",   value: slDR, set: setSlDR, color: CHANNEL_COLORS.deepRed },
-              { label: "Far Red",    value: slFR, set: setSlFR, color: CHANNEL_COLORS.farRed },
-            ].map(({ label, value, set, color }) => (
-              <div key={label} className="flex items-center gap-3">
-                <div className="w-28 text-sm font-medium" style={{ color }}>{label}</div>
+            {activeRoom.channels.map((ch) => (
+              <div key={ch.key} className="flex items-center gap-3">
+                <div className="w-28 text-sm font-medium" style={{ color: ch.color }}>{ch.label}</div>
                 <input
                   type="range" min={0} max={100} step={1}
-                  value={value}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(parseInt(e.target.value, 10))}
+                  value={specSliders[ch.key] ?? 50}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpecSliders((prev) => ({ ...prev, [ch.key]: parseInt(e.target.value, 10) }))}
                   className="w-full"
                 />
                 <input
                   type="number" min={0} max={100}
-                  value={value}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => set(clamp(parseInt(e.target.value || "0", 10)))}
+                  value={specSliders[ch.key] ?? 50}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpecSliders((prev) => ({ ...prev, [ch.key]: clamp(parseInt(e.target.value || "0", 10)) }))}
                   className="w-16 border rounded p-1 text-sm text-right font-mono"
                 />
                 <span className="text-sm">%</span>
@@ -733,7 +817,7 @@ export default function LightTools() {
         )}
 
         {/* Individual channel spectra */}
-        {lampCal && reconstructed.length > 0 && (
+        {lampCal && activeRoom && reconstructed.length > 0 && (
           <div className="border rounded-lg p-3">
             <div className="font-medium">Individual Channel Spectra</div>
             <div className="h-[480px] w-full mt-3">
@@ -750,12 +834,18 @@ export default function LightTools() {
                     formatter={(v: any, name: string) => [(v as number).toExponential(3), name]}
                   />
                   <Legend />
-                  <Line data={channelSpectra.cw} dataKey="ee" name={`Cool White ${slCW}%`}
-                    stroke={CHANNEL_COLORS.coolWhite} dot={false} type="monotone" strokeWidth={1.5} />
-                  <Line data={channelSpectra.dr} dataKey="ee" name={`Deep Red ${slDR}%`}
-                    stroke={CHANNEL_COLORS.deepRed} dot={false} type="monotone" strokeWidth={1.5} />
-                  <Line data={channelSpectra.fr} dataKey="ee" name={`Far Red ${slFR}%`}
-                    stroke={CHANNEL_COLORS.farRed} dot={false} type="monotone" strokeWidth={1.5} />
+                  {activeRoom.channels.map((ch) => (
+                    <Line
+                      key={ch.key}
+                      data={channelSpectra[ch.key] ?? []}
+                      dataKey="ee"
+                      name={`${ch.label} ${specSliders[ch.key] ?? 50}%`}
+                      stroke={ch.color}
+                      dot={false}
+                      type="monotone"
+                      strokeWidth={1.5}
+                    />
+                  ))}
                 </LineChart>
               </ResponsiveContainer>
             </div>
