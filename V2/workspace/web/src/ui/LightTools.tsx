@@ -663,39 +663,31 @@ export default function LightTools() {
   // ===== Render =====
   return (
     <div className="space-y-5">
-      {/* PAR vs Full Spectrum Explanation */}
+      {/* Info box */}
       <div className="border border-blue-300 bg-blue-50 rounded-lg p-4 space-y-3">
-        <h3 className="font-semibold text-lg text-blue-900">PAR vs Full Spectrum (Short Explanation)</h3>
-        
-        <div className="space-y-2">
-          <div>
-            <h4 className="font-semibold text-blue-800">PAR (400–700 nm)</h4>
-            <p className="text-sm text-slate-700">
-              <strong>Unit:</strong> µmol/m²/s<br />
-              This is the wavelength range used for photosynthesis.
-            </p>
-          </div>
-          
-          <div>
-            <h4 className="font-semibold text-blue-800">Full Spectrum (300–900 nm)</h4>
-            <p className="text-sm text-slate-700">
-              <strong>Unit:</strong> µmol/m²/s
-            </p>
-          </div>
-        </div>
-        
-        <div className="text-sm text-slate-700 border-t border-blue-200 pt-3">
-          <p className="mb-2">
-            The displayed values are <strong>estimates based on trend-line calculations</strong>. For precise measurements, a spectrometer is required for your exact fixture settings.
+        <h3 className="font-semibold text-lg text-blue-900">Spectrum Lab — Reconstruct &amp; Compare</h3>
+        <div className="text-sm text-slate-700 space-y-2">
+          <p>
+            Upload the <strong>lamp calibration CSV</strong> for your room (G4–G8) to reconstruct
+            the emitted spectrum at any combination of channel intensities. The calibration file
+            contains Jeti spectroradiometer measurements at 5 % intensity steps for each lamp
+            channel; values in between are linearly interpolated.
           </p>
           <p>
-            Sometimes far-red appears as 0 in PAR: not because the spectrometer failed to measure it, but because its output is extremely small compared to the much stronger cool-white and deep-red components within the PAR range.
+            Optionally, upload a <strong>Jeti reference measurement</strong> to overlay the
+            measured spectrum on top of the reconstruction for direct comparison.
           </p>
-          <div className="mt-3 space-y-1">
+          <p>
+            The <strong>integrated PAR</strong> (µmol/(s·m²)) is computed over the wavelength
+            range you specify (default 400–700 nm). Change the range to include far-red or
+            UV as needed.
+          </p>
+          <div className="mt-3 space-y-1 border-t border-blue-200 pt-3">
             <h4 className="font-semibold text-blue-800">More Posters &amp; Raw Spectra</h4>
             <p>
-              For additional posters hanging in the NPEC building, including raw spectral data and calculated ratios B(400–500):R(600–700) and R(655–665):FR(725–735), you can visit the shared folder
-              {" "}
+              For additional posters hanging in the NPEC building, including raw spectral data
+              and calculated ratios B(400–500):R(600–700) and R(655–665):FR(725–735), visit
+              the shared folder{" "}
               <a
                 href="https://drive.google.com/drive/folders/1xWC8XHK52TAQp51PZiaLiuDlUalp0QaL?usp=sharing"
                 target="_blank"
@@ -710,69 +702,8 @@ export default function LightTools() {
         </div>
       </div>
 
-      {/* Controls */}
+      {/* File pickers */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <label className="block text-sm font-medium">Room & Measurement Type</label>
-          <select
-            className="border rounded p-2 text-sm w-full"
-            value={presetIndex}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => onChangePreset(parseInt(e.target.value, 10))}
-          >
-            {presets.map((p: Preset, i: number) => (
-              <option key={i} value={i}>
-                {p.name}
-              </option>
-            ))}
-          </select>
-        </div>
-        
-        {/* Per-channel sliders */}
-        <div className="space-y-2 md:col-span-2">
-          <label className="block text-sm font-medium">Channel intensities (%)</label>
-          {allChannels.length === 0 ? (
-            <div className="text-sm text-slate-500">No channels available for this preset.</div>
-          ) : (
-            <div className="space-y-3">
-              {allChannels.map((ch) => {
-                const pct = perChannelPercent[ch] ?? 50;
-                const { A, b } = paramsFor(ch);
-                const ppfd = Math.max(0, A * pct + b);
-                return (
-                  <div key={ch} className="flex items-center gap-3">
-                    <div className="w-28 text-sm font-medium">{ch}</div>
-                    <input
-                      type="range" min={0} max={100}
-                      value={pct}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPerChannelPercent((prev: Record<ChannelName, number>) => ({ ...prev, [ch]: parseInt(e.target.value, 10) }))}
-                      className="w-full" />
-                    <input
-                      type="number" min={0} max={100}
-                      value={pct}
-                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPerChannelPercent((prev: Record<ChannelName, number>) => ({ ...prev, [ch]: clamp(parseFloat(e.target.value || '0')) }))}
-                      className="w-20 border rounded p-1 text-sm" />
-                    <span className="text-sm text-slate-600">% → {measurementType} ≈ <b>{ppfd.toFixed(2)}</b></span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-      <div className="text-sm mt-2">Total {measurementType} (current) ≈ <b>{totalPPFD.toFixed(2)}</b> µmol/m²/s</div>
-
-      {/* ===== Spectrum Lab ===== */}
-      <div className="border-t-2 border-purple-300 pt-5 mt-6 space-y-4">
-        <h2 className="text-lg font-bold text-purple-900">Spectrum Lab — Reconstruct &amp; Compare</h2>
-        <p className="text-sm text-slate-600">
-          Load the lamp calibration CSV (e.g.{" "}
-          <code className="bg-slate-100 px-1 rounded">G4_5%_increments_3_lamps.csv</code>) to
-          reconstruct spectra from channel intensities. Optionally load a Jeti measurement to
-          overlay for comparison.
-        </p>
-
-        {/* File pickers */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <label className="block text-sm font-medium">Lamp Calibration CSV</label>
             <ol className="text-xs text-slate-600 space-y-1 list-decimal list-inside">
@@ -820,7 +751,7 @@ export default function LightTools() {
         {/* Channel intensity sliders (5 % steps) */}
         {lampCal && activeRoom && (
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
-            <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
               <label className="text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
               <div className="flex items-center gap-1 text-sm">
                 <span className="text-slate-600">Integrate</span>
@@ -859,8 +790,11 @@ export default function LightTools() {
                 <span className="text-sm font-semibold text-slate-700 w-48 text-right">{(channelPAR[ch.key] ?? 0).toFixed(1)} µmol/(s·m²)</span>
               </div>
             ))}
-            <div className="pt-2 border-t text-base font-bold">
-              Total ({parMinNm}–{parMaxNm} nm): {reconstructedPAR.toFixed(1)} µmol/(s·m²)
+            <div className="pt-2 border-t text-base font-bold flex flex-wrap gap-x-6 gap-y-1">
+              <span>Reconstructed ({parMinNm}–{parMaxNm} nm): {reconstructedPAR.toFixed(1)} µmol/(s·m²)</span>
+              {jetiRef.length > 0 && (
+                <span>Reference ({parMinNm}–{parMaxNm} nm): {jetiRefPAR.toFixed(1)} µmol/(s·m²)</span>
+              )}
             </div>
           </div>
         )}
@@ -933,7 +867,6 @@ export default function LightTools() {
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }
