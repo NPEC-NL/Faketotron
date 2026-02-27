@@ -288,10 +288,35 @@ function clamp(x: number, lo = 0, hi = 100) {
   return Math.max(lo, Math.min(hi, x));
 }
 
-// (unused legacy helpers removed)
-
 // ===== Spectrum Lab types & helpers =====
 type SpectrumPoint = { nm: number; ee: number };
+
+/** Return 0 if value is not a finite number. */
+function safeNumber(x: unknown): number {
+  const n = typeof x === "number" ? x : parseFloat(String(x).replace(",", "."));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Convert spectral irradiance Ee [W/(m²·nm)] → µmol/(s·m²·nm). */
+function toUmol(ee: number, wlNm: number): number {
+  return safeNumber(ee) * safeNumber(wlNm) * 0.008359;
+}
+
+/** Convert an entire spectrum from Ee to µmol/(s·m²·nm). */
+function convertSpectrumToUmol(pts: SpectrumPoint[]): SpectrumPoint[] {
+  return pts.map(p => ({ nm: p.nm, ee: toUmol(p.ee, p.nm) }));
+}
+
+/** Integrate spectrum via trapezoidal rule → total µmol/(s·m²). */
+function integrateSpectrum(pts: SpectrumPoint[]): number {
+  if (pts.length < 2) return pts.length === 1 ? pts[0].ee : 0;
+  let sum = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dLambda = pts[i].nm - pts[i - 1].nm;
+    sum += 0.5 * (pts[i].ee + pts[i - 1].ee) * dLambda;
+  }
+  return sum;
+}
 
 /**
  * Lamp calibration data: channel key → array of 20 spectra (5 %, 10 %, …, 100 %).
@@ -309,13 +334,18 @@ function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCali
   const lines = text.split(/\r?\n/);
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith("Wavelength [nm]")) { headerIdx = i; break; }
+    if (/Wavelength\s*\[nm\]/i.test(lines[i])) { headerIdx = i; break; }
   }
-  if (headerIdx < 0) throw new Error("Header 'Wavelength [nm]' not found");
+  if (headerIdx < 0) throw new Error("Header row containing 'Wavelength [nm]' not found");
+
+  const headerCols = lines[headerIdx].split(";");
+  const wlCol = headerCols.findIndex(c => /Wavelength\s*\[nm\]/i.test(c.trim()));
+  if (wlCol < 0) throw new Error("'Wavelength [nm]' column not found in header");
 
   const numChannels = roomConfig.channels.length;
   const levelsPerChannel = 20;
   const totalDataCols = numChannels * levelsPerChannel;
+  const dataStartCol = wlCol + 1;
 
   const data: LampCalibrationData = {};
   for (const ch of roomConfig.channels) {
@@ -326,38 +356,44 @@ function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCali
     const line = lines[i].trim();
     if (!line) continue;
     const parts = line.split(";");
-    if (parts.length < totalDataCols + 1) continue;
-    const nm = parseInt(parts[0], 10);
-    if (isNaN(nm)) continue;
+    if (parts.length < dataStartCol + totalDataCols) continue;
+    const nm = safeNumber(parts[wlCol]?.replace(",", "."));
+    if (nm === 0) continue;
     for (let chIdx = 0; chIdx < numChannels; chIdx++) {
       const chKey = roomConfig.channels[chIdx].key;
-      const baseCol = 1 + chIdx * levelsPerChannel;
+      const baseCol = dataStartCol + chIdx * levelsPerChannel;
       for (let j = 0; j < levelsPerChannel; j++) {
-        const val = parseFloat(parts[baseCol + j].replace(",", "."));
-        data[chKey][j].push({ nm, ee: isNaN(val) ? 0 : val });
+        const val = safeNumber(parts[baseCol + j]?.replace(",", "."));
+        data[chKey][j].push({ nm, ee: val });
       }
     }
   }
   return data;
 }
 
-/** Parse a single Jeti measurement CSV (first Ee column only). */
+/** Parse a single Jeti measurement CSV — finds columns by header name. */
 function parseJetiSpectrumCsv(text: string): SpectrumPoint[] {
   const lines = text.split(/\r?\n/);
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
-    if (lines[i].startsWith("Wavelength [nm]")) { headerIdx = i; break; }
+    if (/Wavelength\s*\[nm\]/i.test(lines[i])) { headerIdx = i; break; }
   }
-  if (headerIdx < 0) throw new Error("Header 'Wavelength [nm]' not found");
+  if (headerIdx < 0) throw new Error("Header row containing 'Wavelength [nm]' not found");
+
+  const headerCols = lines[headerIdx].split(";");
+  const wlCol = headerCols.findIndex(c => /Wavelength\s*\[nm\]/i.test(c.trim()));
+  if (wlCol < 0) throw new Error("'Wavelength [nm]' column not found in header");
+  const eeCol = headerCols.findIndex(c => /Ee\s*\[W\/\(sqm\*nm\)\]/i.test(c.trim()));
+  if (eeCol < 0) throw new Error("'Ee [W/(sqm*nm)]' column not found in header");
+
   const pts: SpectrumPoint[] = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     const line = lines[i].trim();
     if (!line) continue;
     const parts = line.split(";");
-    if (parts.length < 2) continue;
-    const nm = parseFloat(parts[0].replace(",", "."));
-    const ee = parseFloat(parts[1].replace(",", "."));
-    if (!isNaN(nm) && !isNaN(ee)) pts.push({ nm, ee });
+    const nm = safeNumber(parts[wlCol]?.replace(",", "."));
+    const ee = safeNumber(parts[eeCol]?.replace(",", "."));
+    if (nm > 0) pts.push({ nm, ee });
   }
   if (!pts.length) throw new Error("No spectral data found after header");
   return pts;
@@ -577,31 +613,48 @@ export default function LightTools() {
 
   const reconstructed = useMemo(() => {
     if (!lampCal) return [] as SpectrumPoint[];
-    return reconstructSpectrum(lampCal, specSliders);
+    return convertSpectrumToUmol(reconstructSpectrum(lampCal, specSliders));
   }, [lampCal, specSliders]);
 
+  const jetiRefUmol = useMemo(() => convertSpectrumToUmol(jetiRef), [jetiRef]);
+
   const overlayData = useMemo(() => {
-    if (!reconstructed.length && !jetiRef.length) return [];
+    if (!reconstructed.length && !jetiRefUmol.length) return [];
     const map = new Map<number, { nm: number; reconstructed?: number; measured?: number }>();
     for (const pt of reconstructed) map.set(pt.nm, { nm: pt.nm, reconstructed: pt.ee });
-    for (const pt of jetiRef) {
+    for (const pt of jetiRefUmol) {
       const existing = map.get(pt.nm);
       if (existing) existing.measured = pt.ee;
       else map.set(pt.nm, { nm: pt.nm, measured: pt.ee });
     }
     return Array.from(map.values()).sort((a, b) => a.nm - b.nm);
-  }, [reconstructed, jetiRef]);
+  }, [reconstructed, jetiRefUmol]);
 
   const channelSpectra = useMemo(() => {
     if (!lampCal || !activeRoom) return {} as Record<string, SpectrumPoint[]>;
     const result: Record<string, SpectrumPoint[]> = {};
     for (const ch of activeRoom.channels) {
       if (lampCal[ch.key]) {
-        result[ch.key] = spectrumAtPercent(lampCal[ch.key], specSliders[ch.key] ?? 0);
+        result[ch.key] = convertSpectrumToUmol(spectrumAtPercent(lampCal[ch.key], specSliders[ch.key] ?? 0));
       }
     }
     return result;
   }, [lampCal, activeRoom, specSliders]);
+
+  // PAR per channel (integrated µmol/(s·m²))
+  const channelPAR = useMemo(() => {
+    const result: Record<string, number> = {};
+    for (const key of Object.keys(channelSpectra)) {
+      result[key] = integrateSpectrum(channelSpectra[key]);
+    }
+    return result;
+  }, [channelSpectra]);
+
+  // Total PAR from reconstructed spectrum
+  const reconstructedPAR = useMemo(() => integrateSpectrum(reconstructed), [reconstructed]);
+
+  // Jeti reference PAR
+  const jetiRefPAR = useMemo(() => integrateSpectrum(jetiRefUmol), [jetiRefUmol]);
 
   // ===== Render =====
   return (
@@ -729,7 +782,7 @@ export default function LightTools() {
                 >
                   this Google Drive folder
                 </a>
-                {" "}(G4, G5, G6, G7 or G8 — only G4 is available so far)
+                {" "}(G4, G5, G6, G7 or G8, with 5 % increments for each channel). The filename includes the room name (e.g. G4) for auto-detection of the room.
               </li>
               <li>Upload that file below:</li>
             </ol>
@@ -753,7 +806,9 @@ export default function LightTools() {
             {jetiRefFile && <div className="text-xs text-slate-500">{jetiRefFile}</div>}
             {jetiRefError && <div className="text-xs text-red-600">{jetiRefError}</div>}
             {jetiRef.length > 0 && (
-              <div className="text-xs text-green-700">✓ {jetiRef.length} points loaded</div>
+              <div className="text-xs text-green-700">
+                ✓ {jetiRef.length} points loaded — Reference PAR: <b>{jetiRefPAR.toFixed(1)}</b> µmol/(s·m²)
+              </div>
             )}
           </div>
         </div>
@@ -763,23 +818,27 @@ export default function LightTools() {
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
             <label className="block text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
             {activeRoom.channels.map((ch) => (
-              <div key={ch.key} className="flex items-center gap-3">
-                <div className="w-28 text-sm font-medium" style={{ color: ch.color }}>{ch.label}</div>
+              <div key={ch.key} className="flex items-center gap-2">
+                <div className="w-24 text-sm font-medium truncate" style={{ color: ch.color }}>{ch.label}</div>
                 <input
                   type="range" min={0} max={100} step={1}
                   value={specSliders[ch.key] ?? 50}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpecSliders((prev) => ({ ...prev, [ch.key]: parseInt(e.target.value, 10) }))}
-                  className="w-full"
+                  className="flex-1 max-w-[280px]"
                 />
                 <input
                   type="number" min={0} max={100}
                   value={specSliders[ch.key] ?? 50}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setSpecSliders((prev) => ({ ...prev, [ch.key]: clamp(parseInt(e.target.value || "0", 10)) }))}
-                  className="w-16 border rounded p-1 text-sm text-right font-mono"
+                  className="w-14 border rounded p-1 text-sm text-right font-mono"
                 />
-                <span className="text-sm">%</span>
+                <span className="text-xs">%</span>
+                <span className="text-xs text-slate-500 w-40 text-right">PAR: <b>{(channelPAR[ch.key] ?? 0).toFixed(1)}</b> µmol/(s·m²)</span>
               </div>
             ))}
+            <div className="pt-2 border-t text-sm font-bold">
+              Total PAR (sum over wavelengths): {reconstructedPAR.toFixed(1)} µmol/(s·m²)
+            </div>
           </div>
         )}
 
@@ -795,10 +854,10 @@ export default function LightTools() {
                     dataKey="nm" type="number" domain={["dataMin", "dataMax"]}
                     label={{ value: "Wavelength (nm)", position: "insideBottomRight", offset: -5 }}
                   />
-                  <YAxis label={{ value: "Ee [W/(m²·nm)]", angle: -90, position: "insideLeft" }} />
+                  <YAxis label={{ value: "μmol/(s·m²·nm)", angle: -90, position: "insideLeft" }} />
                   <Tooltip
                     labelFormatter={(nm: number) => `${nm} nm`}
-                    formatter={(v: any, name: string) => [(v as number).toExponential(3), name]}
+                    formatter={(v: any, name: string) => [(v as number).toPrecision(4), name]}
                   />
                   <Legend />
                   {reconstructed.length > 0 && (
@@ -828,10 +887,10 @@ export default function LightTools() {
                     dataKey="nm" type="number" domain={["dataMin", "dataMax"]}
                     label={{ value: "Wavelength (nm)", position: "insideBottomRight", offset: -5 }}
                   />
-                  <YAxis label={{ value: "Ee [W/(m²·nm)]", angle: -90, position: "insideLeft" }} />
+                  <YAxis label={{ value: "μmol/(s·m²·nm)", angle: -90, position: "insideLeft" }} />
                   <Tooltip
                     labelFormatter={(nm: number) => `${nm} nm`}
-                    formatter={(v: any, name: string) => [(v as number).toExponential(3), name]}
+                    formatter={(v: any, name: string) => [(v as number).toPrecision(4), name]}
                   />
                   <Legend />
                   {activeRoom.channels.map((ch) => (
