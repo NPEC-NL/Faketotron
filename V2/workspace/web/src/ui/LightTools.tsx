@@ -751,24 +751,24 @@ export default function LightTools() {
         {/* Channel intensity sliders (5 % steps) */}
         {lampCal && activeRoom && (
           <div className="space-y-3 p-3 border rounded-lg bg-slate-50">
-            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-              <label className="text-sm font-medium">Channel Intensities (1 % steps, interpolated between 5 % measurements)</label>
-              <div className="flex items-center gap-1 text-sm">
-                <span className="text-slate-600">Integrate</span>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <label className="text-sm font-medium">Channel intensities (1 % steps, interpolated between 5 % measurements)</label>
+              <div className="ml-auto flex items-center gap-2 text-sm">
+                <span className="text-xs text-slate-500">Sum the spectrum over</span>
                 <input
                   type="number" min={200} max={1100}
                   value={parMinNm}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMinNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
                   className="w-16 border rounded p-1 text-sm text-center font-mono"
                 />
-                <span className="text-slate-600">–</span>
+                <span className="text-slate-500">-</span>
                 <input
                   type="number" min={200} max={1100}
                   value={parMaxNm}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMaxNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
                   className="w-16 border rounded p-1 text-sm text-center font-mono"
                 />
-                <span className="text-slate-600">nm</span>
+                <span className="text-slate-500">nm</span>
               </div>
             </div>
             {activeRoom.channels.map((ch) => (
