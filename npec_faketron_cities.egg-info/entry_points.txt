@@ -1,0 +1,2 @@
+[console_scripts]
+cities-data = Cities.Cities:main

@@ -1,0 +1,12 @@
+LICENSE
+README.md
+pyproject.toml
+Cities/Cities.py
+Cities/Micromol_to_%_magic.py
+Cities/__init__.py
+npec_faketron_cities.egg-info/PKG-INFO
+npec_faketron_cities.egg-info/SOURCES.txt
+npec_faketron_cities.egg-info/dependency_links.txt
+npec_faketron_cities.egg-info/entry_points.txt
+npec_faketron_cities.egg-info/requires.txt
+npec_faketron_cities.egg-info/top_level.txt
