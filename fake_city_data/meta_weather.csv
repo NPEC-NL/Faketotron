@@ -1,6 +1,0 @@
-location_code,timestamp,measurement_setup,cct_horizontal,global_horizontal_illuminance,global_horizontal_irradiance
-AMS,2024-01-15 10:00:00,SETUP1,5000,50000,500
-AMS,2024-01-15 11:00:00,SETUP1,5200,60000,600
-AMS,2024-01-15 12:00:00,SETUP1,5500,70000,700
-AMS,2024-01-15 13:00:00,SETUP1,5600,65000,650
-AMS,2024-01-15 14:00:00,SETUP1,5400,55000,550

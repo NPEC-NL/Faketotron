@@ -5,6 +5,7 @@ Summary: Utilities for inspecting and merging the Alan_Cities spectral dataset.
 Requires-Python: <3.15,>=3.12
 Description-Content-Type: text/markdown
 License-File: LICENSE
+Requires-Dist: matplotlib>=3.10.8
 Requires-Dist: pandas>=2.2
 Requires-Dist: scipy
 Dynamic: license-file

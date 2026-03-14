@@ -4,6 +4,11 @@ pyproject.toml
 Cities/Cities.py
 Cities/Micromol_to_%_magic.py
 Cities/__init__.py
+Cities/calibrate.py
+Cities/generate_fake_spectra.py
+Cities/main_pipeline.py
+Cities/plot_spectra.py
+Cities/utils.py
 npec_faketron_cities.egg-info/PKG-INFO
 npec_faketron_cities.egg-info/SOURCES.txt
 npec_faketron_cities.egg-info/dependency_links.txt
