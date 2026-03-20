@@ -197,6 +197,52 @@ def default_average_day_output_dir(data_dir: str | Path | None = None) -> Path:
     return resolve_data_dir(data_dir) / DEFAULT_AVERAGE_DAY_OUTPUT_SUBDIR
 
 
+def resolve_average_day_output_dir(
+    output_dir: str | Path | None = None,
+    *,
+    data_dir: str | Path | None = None,
+) -> Path:
+    if output_dir is not None:
+        resolved = Path(output_dir)
+    else:
+        env_output_dir = os.environ.get("ALAN_CITIES_AVERAGE_DAY_DIR")
+        if env_output_dir:
+            resolved = Path(env_output_dir)
+        else:
+            resolved = default_average_day_output_dir(data_dir)
+
+    if not resolved.exists():
+        raise FileNotFoundError(f"Average-day output directory does not exist: {resolved}")
+    return resolved
+
+
+def _normalize_lookup_text(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", value.lower())
+
+
+def find_average_day_csv(
+    location_name: str,
+    *,
+    output_dir: str | Path | None = None,
+    data_dir: str | Path | None = None,
+) -> Path:
+    search_dir = resolve_average_day_output_dir(output_dir, data_dir=data_dir)
+    target = _normalize_lookup_text(location_name)
+    matches = sorted(search_dir.glob("*_average_day_by_month*.csv"))
+    filtered = [path for path in matches if target in _normalize_lookup_text(path.stem)]
+
+    if not filtered:
+        raise FileNotFoundError(
+            f"No average-day CSV matched location '{location_name}' in {search_dir}"
+        )
+    if len(filtered) > 1:
+        raise ValueError(
+            f"Multiple average-day CSV files matched location '{location_name}': "
+            + ", ".join(str(path.name) for path in filtered)
+        )
+    return filtered[0]
+
+
 def _parse_coordinate(value: object) -> float | None:
     if value is None or pd.isna(value):
         return None

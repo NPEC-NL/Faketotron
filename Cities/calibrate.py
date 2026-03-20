@@ -283,6 +283,20 @@ def _single_value_or_raise(frame: pd.DataFrame, column: str, description: str) -
     return unique_values[0]
 
 
+def _optional_single_value(frame: pd.DataFrame, column: str, description: str) -> str:
+    if column not in frame.columns:
+        return ""
+    values = [
+        str(value).strip()
+        for value in frame[column].dropna().unique().tolist()
+        if str(value).strip()
+    ]
+    unique_values = sorted(set(values))
+    if len(unique_values) > 1:
+        raise ValueError(f"Expected exactly one {description}, found: {unique_values}")
+    return unique_values[0] if unique_values else ""
+
+
 def _apply_string_filter(
     frame: pd.DataFrame,
     column: str,
@@ -352,6 +366,9 @@ def load_city_average_day(
     measurement_table: str = DEFAULT_MEASUREMENT_TABLE,
     measurement_setup: str | None = None,
     sun_included: str | None = None,
+    patch: str | None = None,
+    patch_almucantar: str | None = None,
+    patch_azimuth: str | None = None,
     fill_method: str = "none",
     unit: str = "photon",
 ) -> TargetDay:
@@ -369,6 +386,9 @@ def load_city_average_day(
 
     filtered = _apply_string_filter(filtered, "measurement_setup", measurement_setup)
     filtered = _apply_sun_filter(filtered, sun_included)
+    filtered = _apply_string_filter(filtered, "patch", patch)
+    filtered = _apply_string_filter(filtered, "patch_almucantar", patch_almucantar)
+    filtered = _apply_string_filter(filtered, "patch_azimuth", patch_azimuth)
     if filtered.empty:
         raise ValueError(
             f"No rows remain after filtering {path.name} for month={month} "
@@ -397,19 +417,40 @@ def load_city_average_day(
         "month": int(filtered["month"].iloc[0]),
         "month_name": _single_value_or_raise(filtered, "month_name", "month name"),
         "measurement_table": measurement_table,
-        "measurement_setup": _single_value_or_raise(
+        "measurement_setup": _optional_single_value(
             filtered.assign(measurement_setup=filtered.get("measurement_setup", "")),
             "measurement_setup",
             "measurement setup",
         )
         if "measurement_setup" in filtered.columns
         else "",
-        "sun_included": _single_value_or_raise(
+        "sun_included": _optional_single_value(
             filtered.assign(sun_included=filtered.get("sun_included", "")),
             "sun_included",
             "sun_included flag",
         )
         if "sun_included" in filtered.columns
+        else "",
+        "patch": _optional_single_value(
+            filtered.assign(patch=filtered.get("patch", "")),
+            "patch",
+            "patch identifier",
+        )
+        if "patch" in filtered.columns
+        else "",
+        "patch_almucantar": _optional_single_value(
+            filtered.assign(patch_almucantar=filtered.get("patch_almucantar", "")),
+            "patch_almucantar",
+            "patch almucantar",
+        )
+        if "patch_almucantar" in filtered.columns
+        else "",
+        "patch_azimuth": _optional_single_value(
+            filtered.assign(patch_azimuth=filtered.get("patch_azimuth", "")),
+            "patch_azimuth",
+            "patch azimuth",
+        )
+        if "patch_azimuth" in filtered.columns
         else "",
     }
 
@@ -463,6 +504,21 @@ def load_city_average_day(
     )
 
 
+def _format_wavelength_column_name(value: float) -> str:
+    if float(value).is_integer():
+        return str(int(value))
+    return format(float(value), "g")
+
+
+def target_day_to_spectra_frame(target_day: TargetDay) -> pd.DataFrame:
+    wavelength_columns = [
+        _format_wavelength_column_name(wavelength)
+        for wavelength in target_day.wavelengths_nm
+    ]
+    spectral_frame = pd.DataFrame(target_day.spectra, columns=wavelength_columns)
+    return pd.concat([target_day.metadata.reset_index(drop=True), spectral_frame], axis=1)
+
+
 def _spectrum_at_percent(level_spectra: np.ndarray, percent: float) -> np.ndarray:
     if percent <= 0:
         return np.zeros_like(level_spectra[0])
@@ -491,6 +547,56 @@ def reconstruct_spectrum(calibration: CalibrationSet, percentages: Sequence[floa
             float(percentage),
         )
     return reconstructed
+
+
+def reconstruct_schedule_spectra(
+    lamp_schedule: pd.DataFrame,
+    calibration: CalibrationSet,
+    *,
+    output_wavelengths_nm: Sequence[float] | None = None,
+) -> pd.DataFrame:
+    percentage_columns = [f"{channel.key}_pct" for channel in calibration.channels]
+    missing_columns = [column for column in percentage_columns if column not in lamp_schedule.columns]
+    if missing_columns:
+        raise KeyError(
+            "Lamp schedule is missing required percentage columns: "
+            + ", ".join(missing_columns)
+        )
+
+    reconstructed_rows = np.vstack(
+        [
+            reconstruct_spectrum(calibration, row)
+            for row in lamp_schedule.loc[:, percentage_columns].to_numpy(dtype=float)
+        ]
+    ) if len(lamp_schedule) else np.empty((0, len(calibration.wavelengths_nm)), dtype=float)
+
+    wavelengths_nm = np.asarray(
+        calibration.wavelengths_nm if output_wavelengths_nm is None else output_wavelengths_nm,
+        dtype=float,
+    )
+    if output_wavelengths_nm is None:
+        output_rows = reconstructed_rows
+    else:
+        output_rows = np.vstack(
+            [
+                np.interp(
+                    wavelengths_nm,
+                    calibration.wavelengths_nm,
+                    row,
+                    left=0.0,
+                    right=0.0,
+                )
+                for row in reconstructed_rows
+            ]
+        ) if len(reconstructed_rows) else np.empty((0, len(wavelengths_nm)), dtype=float)
+
+    wavelength_columns = [
+        _format_wavelength_column_name(wavelength)
+        for wavelength in wavelengths_nm
+    ]
+    metadata_frame = lamp_schedule.reset_index(drop=True).copy()
+    spectral_frame = pd.DataFrame(output_rows, columns=wavelength_columns)
+    return pd.concat([metadata_frame, spectral_frame], axis=1)
 
 
 def _interpolate_target_spectrum(
@@ -684,6 +790,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Optional sun_included filter (default: any).",
     )
     parser.add_argument(
+        "--patch",
+        default=None,
+        help="Optional patch filter for spectral_patch_radiance data.",
+    )
+    parser.add_argument(
+        "--patch-almucantar",
+        default=None,
+        help="Optional patch_almucantar filter for spectral_patch_radiance data.",
+    )
+    parser.add_argument(
+        "--patch-azimuth",
+        default=None,
+        help="Optional patch_azimuth filter for spectral_patch_radiance data.",
+    )
+    parser.add_argument(
         "--fill-method",
         choices=("none", "interpolate", "ffill", "zero"),
         default="none",
@@ -737,6 +858,9 @@ def run(args: argparse.Namespace) -> int:
         measurement_table=args.measurement_table,
         measurement_setup=args.measurement_setup,
         sun_included=_parse_bool_choice(args.sun_included),
+        patch=args.patch,
+        patch_almucantar=args.patch_almucantar,
+        patch_azimuth=args.patch_azimuth,
         fill_method=args.fill_method,
         unit=args.unit,
     )

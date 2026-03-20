@@ -2,7 +2,11 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from scipy.optimize import nnls
-from utils import load_calibration_data
+
+try:
+    from .utils import load_calibration_data
+except ImportError:
+    from utils import load_calibration_data
 
 def calculate_lamp_percentages(target_spectrum_df, room):
     """

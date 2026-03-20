@@ -1,15 +1,69 @@
 import pandas as pd
 import matplotlib.pyplot as plt
-import os
 import re
 from pathlib import Path
 import matplotlib.colors as mcolors
-import numpy as np
+
 
 def get_wavelength_columns(df):
     """Get wavelength columns from the dataframe."""
     wavelength_cols = [col for col in df.columns if re.match(r'^\d+(\.\d+)?$', str(col))]
     return wavelength_cols
+
+
+def plot_spectra_frame(
+    spectra_frame: pd.DataFrame,
+    output_path: Path,
+    *,
+    title: str | None = None,
+    ylabel: str = 'Intensity',
+):
+    """Plot one day of spectra using the same style as the batch city plotter."""
+    wavelength_cols = get_wavelength_columns(spectra_frame)
+    if not wavelength_cols:
+        raise ValueError("No wavelength columns were found in the provided spectra frame.")
+    if 'time_of_day' not in spectra_frame.columns:
+        raise KeyError("The provided spectra frame must contain a 'time_of_day' column.")
+
+    plot_frame = spectra_frame.reset_index(drop=True).copy()
+    wavelengths = pd.to_numeric(wavelength_cols)
+    plot_data = plot_frame[wavelength_cols].apply(pd.to_numeric, errors='coerce').to_numpy(dtype=float)
+    time_series = pd.to_datetime(plot_frame['time_of_day'], format='%H:%M')
+    time_of_day_hours = time_series.dt.hour + time_series.dt.minute / 60
+
+    if time_of_day_hours.empty:
+        raise ValueError("The provided spectra frame does not contain any rows to plot.")
+
+    if title is None:
+        location_name = plot_frame['location_name'].iloc[0] if 'location_name' in plot_frame.columns else 'Unknown'
+        month_name = plot_frame['month_name'].iloc[0] if 'month_name' in plot_frame.columns else 'Unknown'
+        title = f'Spectral Intensity over a Day for {location_name} - {month_name}'
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    fig, ax = plt.subplots(figsize=(12, 8))
+    norm = mcolors.Normalize(vmin=time_of_day_hours.min(), vmax=time_of_day_hours.max())
+    cmap = plt.get_cmap('viridis')
+
+    for row_index in range(len(plot_data)):
+        ax.plot(wavelengths, plot_data[row_index], color=cmap(norm(time_of_day_hours.iloc[row_index])))
+
+    ax.set_xlabel('Wavelength (nm)')
+    ax.set_ylabel(ylabel)
+    ax.set_title(title)
+
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    fig.colorbar(sm, ax=ax, label='Time of Day (hour)')
+
+    start_time = plot_frame['time_of_day'].min()
+    end_time = plot_frame['time_of_day'].max()
+    ax.legend([f"Time range: {start_time} to {end_time}"], loc='upper right')
+
+    fig.savefig(output_path)
+    plt.close(fig)
+    return output_path
+
 
 def plot_city_month_spectra(input_dir: Path, output_dir: Path):
     """
@@ -36,8 +90,6 @@ def plot_city_month_spectra(input_dir: Path, output_dir: Path):
             print(f"No wavelength data found in {csv_file.name}. Skipping.")
             continue
             
-        wavelengths = pd.to_numeric(wavelength_cols)
-
         if 'month_name' in df.columns:
             for month_name in df['month_name'].unique():
                 month_df = df[df['month_name'] == month_name]
@@ -47,37 +99,13 @@ def plot_city_month_spectra(input_dir: Path, output_dir: Path):
                     measurement_tables = month_df['measurement_table'].unique()
                     if len(measurement_tables) > 1:
                         print(f"Warning: Multiple measurement tables found for {city_name} in {month_name}. Plotting combined data.")
-                
-                plot_data = month_df[wavelength_cols].to_numpy()
-                time_of_day_series = pd.to_datetime(month_df['time_of_day'], format='%H:%M').dt.hour + pd.to_datetime(month_df['time_of_day'], format='%H:%M').dt.minute / 60
-
-                if time_of_day_series.empty:
-                    print(f"No time data for {city_name} - {month_name}. Skipping.")
-                    continue
-                
-                fig, ax = plt.subplots(figsize=(12, 8))
-                
-                norm = mcolors.Normalize(vmin=time_of_day_series.min(), vmax=time_of_day_series.max())
-                cmap = plt.get_cmap('viridis')
-                
-                for i in range(len(plot_data)):
-                    ax.plot(wavelengths, plot_data[i], color=cmap(norm(time_of_day_series.iloc[i])))
-
-                ax.set_xlabel('Wavelength (nm)')
-                ax.set_ylabel('Intensity')
-                ax.set_title(f'Spectral Intensity over a Day for {city_name} - {month_name}')
-                
-                sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-                sm.set_array([])
-                cbar = fig.colorbar(sm, ax=ax, label='Time of Day (hour)')
-                
-                start_time = month_df['time_of_day'].min()
-                end_time = month_df['time_of_day'].max()
-                ax.legend([f"Time range: {start_time} to {end_time}"], loc='upper right')
 
                 plot_filename = output_dir / f"{city_name}_{month_name}.png"
-                fig.savefig(plot_filename)
-                plt.close(fig)
+                plot_spectra_frame(
+                    month_df,
+                    plot_filename,
+                    title=f'Spectral Intensity over a Day for {city_name} - {month_name}',
+                )
                 print(f"Saved plot: {plot_filename}")
         else:
             print(f"No 'month_name' column in {csv_file.name}. Can't create monthly plots.")
