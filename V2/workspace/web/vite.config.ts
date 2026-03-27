@@ -14,9 +14,11 @@ export default defineConfig({
     assetsInlineLimit: 100000000,          // force inline assets
     rollupOptions: {
       // keep everything in one chunk
-      output: { manualChunks: undefined },
-      // ensure dynamic imports are also inlined
-      inlineDynamicImports: true as any,
+      output: {
+        manualChunks: undefined,
+        // ensure dynamic imports are also inlined
+        inlineDynamicImports: true as any,
+      },
     },
   },
 });

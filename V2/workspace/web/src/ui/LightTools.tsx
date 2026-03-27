@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid, ResponsiveContainer, Legend, /* add for spectrum and dots */ BarChart, Bar, Cell } from "recharts";
+import { detectRoomFromFilename, type RoomConfig } from "../utils/rooms";
 
 // ===== Types =====
 type ChannelParams = { A: number; b: number };
@@ -23,68 +24,6 @@ const CHANNEL_COLORS: Record<string, string> = {
   farRed: "#b1006b",   // magenta-ish
 };
 const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
-
-// ===== Room configuration for Spectrum Lab =====
-type RoomChannelConfig = { key: string; label: string; color: string };
-type RoomConfig = { id: string; channels: RoomChannelConfig[] };
-
-const ROOM_CONFIGS: Record<string, RoomConfig> = {
-  G4: {
-    id: "G4",
-    channels: [
-      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
-      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
-      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
-    ],
-  },
-  G5: {
-    id: "G5",
-    channels: [
-      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
-      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
-      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
-    ],
-  },
-  G6: {
-    id: "G6",
-    channels: [
-      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
-      { key: "deepRed",   label: "Red",        color: "#e03131" },
-      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
-    ],
-  },
-  G7: {
-    id: "G7",
-    channels: [
-      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
-      { key: "blue",      label: "Blue",       color: "#3b82f6" },
-      { key: "cyan",      label: "Cyan",       color: "#06b6d4" },
-      { key: "green",     label: "Green",      color: "#22c55e" },
-      { key: "amber",     label: "Amber",      color: "#f59e0b" },
-      { key: "red",       label: "Red",        color: "#ef4444" },
-      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
-      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
-    ],
-  },
-  G8: {
-    id: "G8",
-    channels: [
-      { key: "coolWhite", label: "Cool White", color: "#7aa6ff" },
-      { key: "deepRed",   label: "Deep Red",   color: "#e03131" },
-      { key: "farRed",    label: "Far Red",     color: "#b1006b" },
-    ],
-  },
-};
-
-/** Detect room from calibration CSV filename. */
-function detectRoom(filename: string): RoomConfig | null {
-  const upper = filename.toUpperCase();
-  // Check longer names first to avoid G7 matching "G7x" vs "G7"
-  for (const key of ["G8", "G7", "G6", "G5", "G4"]) {
-    if (upper.includes(key)) return ROOM_CONFIGS[key];
-  }
-  return null;
-}
 
 // ===== Default data (existing calibration) =====
 // Each room now has separate PAR and Full spectrum entries in the dropdown
@@ -573,7 +512,7 @@ export default function LightTools() {
     if (!file) return;
     setLampCalFile(file.name);
     setLampCalError("");
-    const detected = detectRoom(file.name);
+    const detected = detectRoomFromFilename(file.name);
     if (!detected) {
       setLampCalError("Could not detect room from filename. Expected G4, G5, G6, G7 or G8 in the filename.");
       setLampCal(null);
