@@ -237,6 +237,7 @@ function clamp(x: number, lo = 0, hi = 100) {
 
 // ===== Spectrum Lab types & helpers =====
 type SpectrumPoint = { nm: number; ee: number };
+type ChannelCalibration = { levels: number[]; spectra: SpectrumPoint[][] };
 
 /** Return 0 if value is not a finite number. */
 function safeNumber(x: unknown): number {
@@ -268,12 +269,57 @@ function integrateSpectrum(pts: SpectrumPoint[], minNm = 0, maxNm = Infinity): n
 }
 
 /**
- * Lamp calibration data: channel key → array of 20 spectra (5 %, 10 %, …, 100 %).
- * For G4/G5/G6: { coolWhite, deepRed, farRed }
- * For G8: { coolWhite, deepRed, farRed } and optionally { uvb } once measured
- * For G7: { coolWhite, blue, cyan, green, amber, red, deepRed, farRed }
+ * Lamp calibration data: channel key → measured percentage levels plus the corresponding spectra.
+ * Standard lamp channels use 20 spectra at 5 %, 10 %, …, 100 %.
+ * UVB uses 4 spectra at 25 %, 50 %, 75 %, 100 % and may live on a separate wavelength axis.
  */
-type LampCalibrationData = Record<string, SpectrumPoint[][]>;
+type LampCalibrationData = Record<string, ChannelCalibration>;
+
+type CalibrationBlockSpec = {
+  key: string;
+  levels: number[];
+};
+
+function parseCalibrationBlock(
+  lines: string[],
+  headerIdx: number,
+  wavelengthCol: number,
+  specs: CalibrationBlockSpec[],
+): LampCalibrationData {
+  const dataStartCol = wavelengthCol + 1;
+  const requiredCols = specs.reduce((sum, spec) => sum + spec.levels.length, 0);
+  const data: LampCalibrationData = {};
+
+  for (const spec of specs) {
+    data[spec.key] = {
+      levels: spec.levels,
+      spectra: Array.from({ length: spec.levels.length }, () => []),
+    };
+  }
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const parts = line.split(";");
+    if (parts.length < dataStartCol + requiredCols) continue;
+
+    const nm = safeNumber(parts[wavelengthCol]?.replace(",", "."));
+    if (nm === 0) continue;
+
+    let baseCol = dataStartCol;
+    for (const spec of specs) {
+      const channel = data[spec.key];
+      for (let j = 0; j < spec.levels.length; j++) {
+        const val = safeNumber(parts[baseCol + j]?.replace(",", "."));
+        channel.spectra[j].push({ nm, ee: val });
+      }
+      baseCol += spec.levels.length;
+    }
+  }
+
+  return data;
+}
 
 /**
  * Parse a Jeti multi-measurement CSV for any room.
@@ -289,43 +335,29 @@ function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCali
   if (headerIdx < 0) throw new Error("Header row containing 'Wavelength [nm]' not found");
 
   const headerCols = lines[headerIdx].split(";");
-  const wlCol = headerCols.findIndex(c => /Wavelength\s*\[nm\]/i.test(c.trim()));
-  if (wlCol < 0) throw new Error("'Wavelength [nm]' column not found in header");
+  const wavelengthCols = headerCols
+    .map((col, index) => (/Wavelength\s*\[nm\]/i.test(col.trim()) ? index : -1))
+    .filter((index) => index >= 0);
+  if (wavelengthCols.length === 0) throw new Error("'Wavelength [nm]' column not found in header");
 
-  const levelsPerChannel = 20;
-  const configuredChannels = [...roomConfig.channels];
-  const dataStartCol = wlCol + 1;
-  const availableDataCols = Math.max(0, headerCols.length - dataStartCol);
+  const standardLevels = Array.from({ length: 20 }, (_, index) => (index + 1) * 5);
+  const standardSpecs = roomConfig.channels.map((channel) => ({
+    key: channel.key,
+    levels: standardLevels,
+  }));
+  const parsed = parseCalibrationBlock(lines, headerIdx, wavelengthCols[0], standardSpecs);
 
-  if (roomConfig.id === "G8" && availableDataCols >= (configuredChannels.length + 1) * levelsPerChannel) {
-    configuredChannels.push(UVB_CHANNEL);
-  }
-
-  const numChannels = configuredChannels.length;
-  const totalDataCols = numChannels * levelsPerChannel;
-
-  const data: LampCalibrationData = {};
-  for (const ch of configuredChannels) {
-    data[ch.key] = Array.from({ length: levelsPerChannel }, () => []);
-  }
-
-  for (let i = headerIdx + 1; i < lines.length; i++) {
-    const line = lines[i].trim();
-    if (!line) continue;
-    const parts = line.split(";");
-    if (parts.length < dataStartCol + totalDataCols) continue;
-    const nm = safeNumber(parts[wlCol]?.replace(",", "."));
-    if (nm === 0) continue;
-    for (let chIdx = 0; chIdx < numChannels; chIdx++) {
-      const chKey = configuredChannels[chIdx].key;
-      const baseCol = dataStartCol + chIdx * levelsPerChannel;
-      for (let j = 0; j < levelsPerChannel; j++) {
-        const val = safeNumber(parts[baseCol + j]?.replace(",", "."));
-        data[chKey][j].push({ nm, ee: val });
-      }
+  if (wavelengthCols.length > 1) {
+    const uvbBlock = parseCalibrationBlock(lines, headerIdx, wavelengthCols[1], [
+      { key: "uvb", levels: [25, 50, 75, 100] },
+    ]);
+    const uvbCalibration = uvbBlock.uvb;
+    if (uvbCalibration && uvbCalibration.spectra.every((spectrum) => spectrum.length > 0)) {
+      parsed.uvb = uvbCalibration;
     }
   }
-  return data;
+
+  return parsed;
 }
 
 /** Parse a single Jeti measurement CSV — finds columns by header name. */
@@ -358,36 +390,47 @@ function parseJetiSpectrumCsv(text: string): SpectrumPoint[] {
 
 /**
  * Interpolated spectrum for a given channel at any percent 0–100.
- * Measured data is at 5 % steps (index 0 = 5 %, …, 19 = 100 %).
- * Between measured points: linear interpolation.
- * Below 5 %: extrapolate from the 5 %→10 % slope (clamping Ee ≥ 0).
+ * Interpolate a channel spectrum for any 0-100 % from its measured levels.
+ * Standard channels use 5 % steps; UVB uses 25/50/75/100 %.
  */
-function spectrumAtPercent(spectra: SpectrumPoint[][], pct: number): SpectrumPoint[] {
+function spectrumAtPercent(calibration: ChannelCalibration, pct: number): SpectrumPoint[] {
+  const { levels, spectra } = calibration;
+  if (!levels.length || !spectra.length) return [];
+
   if (pct <= 0) return spectra[0].map((p) => ({ nm: p.nm, ee: 0 }));
-  if (pct >= 100) return spectra[19];
 
-  // Map: 5 % → idx 0, 10 % → idx 1, …, 100 % → idx 19
-  const idx = pct / 5 - 1; // e.g. 6 % → 0.2, 3 % → −0.4
+  const lastIndex = levels.length - 1;
+  if (pct >= levels[lastIndex]) return spectra[lastIndex];
 
-  if (idx < 0) {
-    // Extrapolate below 5 % using slope between 5 % (idx 0) and 10 % (idx 1)
-    // At pct=5 we want spectra[0]; per 1 % the change is (spectra[1]–spectra[0])/5
-    const perOne = (val1: number, val0: number) => (val1 - val0) / 5;
-    const stepsBelow = 5 - pct; // how many % below 5
+  const firstLevel = levels[0];
+  if (pct <= firstLevel) {
+    if (firstLevel > 5 || levels.length === 1) {
+      const scale = pct / firstLevel;
+      return spectra[0].map((p) => ({ nm: p.nm, ee: Math.max(0, p.ee * scale) }));
+    }
+
+    const nextLevel = levels[1];
+    const levelSpan = nextLevel - firstLevel || 1;
+    const stepsBelow = firstLevel - pct;
     return spectra[0].map((p, i) => ({
       nm: p.nm,
-      ee: Math.max(0, p.ee - perOne(spectra[1][i]?.ee ?? 0, p.ee) * stepsBelow),
+      ee: Math.max(0, p.ee - (((spectra[1][i]?.ee ?? 0) - p.ee) / levelSpan) * stepsBelow),
     }));
   }
 
-  const lo = Math.floor(idx);
-  const hi = Math.ceil(idx);
-  if (lo === hi) return spectra[lo];
-  const t = idx - lo;
-  return spectra[lo].map((p, i) => ({
-    nm: p.nm,
-    ee: p.ee * (1 - t) + (spectra[hi][i]?.ee ?? 0) * t,
-  }));
+  for (let hi = 1; hi < levels.length; hi++) {
+    if (pct === levels[hi]) return spectra[hi];
+    if (pct < levels[hi]) {
+      const lo = hi - 1;
+      const t = (pct - levels[lo]) / (levels[hi] - levels[lo]);
+      return spectra[lo].map((p, i) => ({
+        nm: p.nm,
+        ee: p.ee * (1 - t) + (spectra[hi][i]?.ee ?? 0) * t,
+      }));
+    }
+  }
+
+  return spectra[lastIndex];
 }
 
 /** Sum all channel spectra at given percentages into one combined spectrum. */
@@ -398,14 +441,17 @@ function reconstructSpectrum(
   const channelKeys = Object.keys(cal);
   if (channelKeys.length === 0) return [];
 
-  const channelSpectra = channelKeys.map(key =>
-    spectrumAtPercent(cal[key], percents[key] ?? 0)
-  );
+  const combined = new Map<number, number>();
+  for (const key of channelKeys) {
+    const spectrum = spectrumAtPercent(cal[key], percents[key] ?? 0);
+    for (const point of spectrum) {
+      combined.set(point.nm, (combined.get(point.nm) ?? 0) + point.ee);
+    }
+  }
 
-  return channelSpectra[0].map((p, i) => ({
-    nm: p.nm,
-    ee: channelSpectra.reduce((sum, sp) => sum + (sp[i]?.ee ?? 0), 0),
-  }));
+  return Array.from(combined.entries())
+    .map(([nm, ee]) => ({ nm, ee }))
+    .sort((a, b) => a.nm - b.nm);
 }
 
 // ===== Main component =====
@@ -523,11 +569,27 @@ export default function LightTools() {
   const [parMinNm, setParMinNm] = useState(400);
   const [parMaxNm, setParMaxNm] = useState(700);
 
-  const hasMeasuredUvb = activeRoom?.id === "G8" && Boolean(lampCal?.uvb);
+  const hasMeasuredUvb = Boolean(lampCal?.uvb);
   const spectrumRoomChannels = useMemo(() => {
     if (!activeRoom) return [];
-    return hasMeasuredUvb ? [...activeRoom.channels, UVB_CHANNEL] : activeRoom.channels;
+    return hasMeasuredUvb && !activeRoom.channels.some((channel) => channel.key === UVB_CHANNEL.key)
+      ? [...activeRoom.channels, UVB_CHANNEL]
+      : activeRoom.channels;
   }, [activeRoom, hasMeasuredUvb]);
+  const lampCalibrationSummary = useMemo(() => {
+    if (!lampCal || !activeRoom) return "";
+
+    const firstStandardChannel = activeRoom.channels[0]?.key;
+    const standardWavelengths = firstStandardChannel ? lampCal[firstStandardChannel]?.spectra[0]?.length ?? 0 : 0;
+    const summary = [`${standardWavelengths} standard wavelengths`, `${activeRoom.channels.length} standard channels x 20 levels`];
+
+    if (hasMeasuredUvb) {
+      const uvbWavelengths = lampCal.uvb?.spectra[0]?.length ?? 0;
+      summary.push(`UVB x 4 levels (${uvbWavelengths} wavelengths)`);
+    }
+
+    return summary.join(" - ");
+  }, [lampCal, activeRoom, hasMeasuredUvb]);
 
   function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -662,10 +724,13 @@ export default function LightTools() {
             it to include far-red or a wider range as needed.
           </p>
           <p>
-            UVB is only supported here once spectral calibration has been measured. For G4-G7 this has
-            not yet been measured because UV light is dangerous. For G8, the tool is ready to load UVB
-            automatically once the calibration CSV contains 20 extra UVB columns at the end of the file
-            (5% to 100% in 5% increments).
+            UVB can be included as a second Jeti export pasted to the right of the normal calibration
+            CSV. The tool now detects that extra block automatically when it contains 4 UVB measurements
+            at 25%, 50%, 75% and 100%, even if it has its own wavelength axis.
+          </p>
+          <p>
+            Because UVB sits below normal PAR, use a wavelength window such as 230-400&thinsp;nm
+            or a wider window if you want UVB to contribute to the integrated total.
           </p>
           <div className="border-t border-blue-200 pt-3 mt-1 space-y-1">
             <h4 className="font-semibold text-blue-800">More posters &amp; raw spectra</h4>
@@ -699,22 +764,17 @@ export default function LightTools() {
           {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
           {lampCal && activeRoom && (
             <div className="text-xs text-green-700">
-              Loaded - {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {spectrumRoomChannels.length} channels x 20 levels - room: {activeRoom.id}
+              Loaded - room: {activeRoom.id} - {lampCalibrationSummary}
             </div>
           )}
-          {activeRoom && activeRoom.id !== "G8" && (
+          {activeRoom && lampCal && !hasMeasuredUvb && (
             <div className="text-xs text-amber-700">
-              UVB has not yet been measured for {activeRoom.id}. UV light is dangerous, so only the measured lamp channels are available here.
+              No UVB block was found in this CSV. To include UVB, paste a second Jeti export to the right side of the file with 4 UVB measurements at 25%, 50%, 75% and 100%.
             </div>
           )}
-          {activeRoom?.id === "G8" && lampCal && !hasMeasuredUvb && (
-            <div className="text-xs text-amber-700">
-              G8 UVB calibration is not in this CSV yet. Add 20 UVB columns at the end of the file (5% to 100% in 5% increments) and it will appear automatically.
-            </div>
-          )}
-          {activeRoom?.id === "G8" && hasMeasuredUvb && (
+          {activeRoom && hasMeasuredUvb && (
             <div className="text-xs text-green-700">
-              G8 UVB calibration detected. The extra 20 UVB measurement columns were loaded successfully.
+              UVB calibration detected. The separate UV block with 4 measurement levels was loaded successfully.
             </div>
           )}
         </div>
@@ -744,14 +804,14 @@ export default function LightTools() {
               <div className="ml-auto flex items-center gap-2 text-sm">
                 <span className="text-xs text-slate-500">Sum the spectrum over</span>
                 <input
-                  type="number" min={200} max={1100}
+                  type="number" min={180} max={1100}
                   value={parMinNm}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMinNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
                   className="w-16 border rounded p-1 text-sm text-center font-mono"
                 />
                 <span className="text-slate-500">-</span>
                 <input
-                  type="number" min={200} max={1100}
+                  type="number" min={180} max={1100}
                   value={parMaxNm}
                   onChange={(e: React.ChangeEvent<HTMLInputElement>) => setParMaxNm(Math.max(0, parseInt(e.target.value || "0", 10)))}
                   className="w-16 border rounded p-1 text-sm text-center font-mono"
@@ -759,6 +819,11 @@ export default function LightTools() {
                 <span className="text-slate-500">nm</span>
               </div>
             </div>
+            {hasMeasuredUvb && parMinNm >= 400 && (
+              <div className="text-xs text-amber-700">
+                UVB is currently outside the integration window. Set the range below 400 nm if you want UVB to contribute.
+              </div>
+            )}
             {spectrumRoomChannels.map((ch) => (
               <div key={ch.key} className="flex items-center gap-2">
                 <div className="w-24 text-sm font-medium truncate" style={{ color: ch.color }}>{ch.label}</div>

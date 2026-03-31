@@ -3,10 +3,10 @@ README.md
 pyproject.toml
 Cities/Cities.py
 Cities/Micromol_to_%_magic.py
-Cities/__init__.py
 Cities/calibrate.py
-Cities/generate_fake_spectra.py
+Cities/example_city_calibration_roundtrip.py
 Cities/main_pipeline.py
+Cities/merge_uv_calibrations.py
 Cities/plot_spectra.py
 Cities/utils.py
 npec_faketron_cities.egg-info/PKG-INFO
