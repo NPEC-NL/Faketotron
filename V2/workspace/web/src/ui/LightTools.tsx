@@ -22,8 +22,16 @@ const CHANNEL_COLORS: Record<string, string> = {
   coolWhite: "#7aa6ff", // cool blue
   deepRed: "#e03131",  // red
   farRed: "#b1006b",   // magenta-ish
+  uvb: "#7c3aed",      // violet
 };
 const colorFor = (name: string) => CHANNEL_COLORS[name] || "#8884d8";
+
+const UVB_CHANNEL = {
+  key: "uvb",
+  label: "UVB",
+  color: "#7c3aed",
+  protocolGroupName: "UVB",
+} as const;
 
 // ===== Default data (existing calibration) =====
 // Each room now has separate PAR and Full spectrum entries in the dropdown
@@ -261,7 +269,8 @@ function integrateSpectrum(pts: SpectrumPoint[], minNm = 0, maxNm = Infinity): n
 
 /**
  * Lamp calibration data: channel key → array of 20 spectra (5 %, 10 %, …, 100 %).
- * For G4/G5/G6/G8: { coolWhite, deepRed, farRed }
+ * For G4/G5/G6: { coolWhite, deepRed, farRed }
+ * For G8: { coolWhite, deepRed, farRed } and optionally { uvb } once measured
  * For G7: { coolWhite, blue, cyan, green, amber, red, deepRed, farRed }
  */
 type LampCalibrationData = Record<string, SpectrumPoint[][]>;
@@ -283,13 +292,20 @@ function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCali
   const wlCol = headerCols.findIndex(c => /Wavelength\s*\[nm\]/i.test(c.trim()));
   if (wlCol < 0) throw new Error("'Wavelength [nm]' column not found in header");
 
-  const numChannels = roomConfig.channels.length;
   const levelsPerChannel = 20;
-  const totalDataCols = numChannels * levelsPerChannel;
+  const configuredChannels = [...roomConfig.channels];
   const dataStartCol = wlCol + 1;
+  const availableDataCols = Math.max(0, headerCols.length - dataStartCol);
+
+  if (roomConfig.id === "G8" && availableDataCols >= (configuredChannels.length + 1) * levelsPerChannel) {
+    configuredChannels.push(UVB_CHANNEL);
+  }
+
+  const numChannels = configuredChannels.length;
+  const totalDataCols = numChannels * levelsPerChannel;
 
   const data: LampCalibrationData = {};
-  for (const ch of roomConfig.channels) {
+  for (const ch of configuredChannels) {
     data[ch.key] = Array.from({ length: levelsPerChannel }, () => []);
   }
 
@@ -301,7 +317,7 @@ function parseLampCalibrationCsv(text: string, roomConfig: RoomConfig): LampCali
     const nm = safeNumber(parts[wlCol]?.replace(",", "."));
     if (nm === 0) continue;
     for (let chIdx = 0; chIdx < numChannels; chIdx++) {
-      const chKey = roomConfig.channels[chIdx].key;
+      const chKey = configuredChannels[chIdx].key;
       const baseCol = dataStartCol + chIdx * levelsPerChannel;
       for (let j = 0; j < levelsPerChannel; j++) {
         const val = safeNumber(parts[baseCol + j]?.replace(",", "."));
@@ -507,6 +523,12 @@ export default function LightTools() {
   const [parMinNm, setParMinNm] = useState(400);
   const [parMaxNm, setParMaxNm] = useState(700);
 
+  const hasMeasuredUvb = activeRoom?.id === "G8" && Boolean(lampCal?.uvb);
+  const spectrumRoomChannels = useMemo(() => {
+    if (!activeRoom) return [];
+    return hasMeasuredUvb ? [...activeRoom.channels, UVB_CHANNEL] : activeRoom.channels;
+  }, [activeRoom, hasMeasuredUvb]);
+
   function onLampCalFileChosen(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -528,7 +550,11 @@ export default function LightTools() {
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        setLampCal(parseLampCalibrationCsv(reader.result as string, detected));
+        const parsedCalibration = parseLampCalibrationCsv(reader.result as string, detected);
+        const nextSliders: Record<string, number> = {};
+        for (const key of Object.keys(parsedCalibration)) nextSliders[key] = 50;
+        setSpecSliders(nextSliders);
+        setLampCal(parsedCalibration);
       } catch (err: any) {
         setLampCalError(err.message ?? "Parse error");
         setLampCal(null);
@@ -576,13 +602,13 @@ export default function LightTools() {
   const channelSpectra = useMemo(() => {
     if (!lampCal || !activeRoom) return {} as Record<string, SpectrumPoint[]>;
     const result: Record<string, SpectrumPoint[]> = {};
-    for (const ch of activeRoom.channels) {
+    for (const ch of spectrumRoomChannels) {
       if (lampCal[ch.key]) {
         result[ch.key] = convertSpectrumToUmol(spectrumAtPercent(lampCal[ch.key], specSliders[ch.key] ?? 0));
       }
     }
     return result;
-  }, [lampCal, activeRoom, specSliders]);
+  }, [lampCal, activeRoom, spectrumRoomChannels, specSliders]);
 
   // PAR per channel (integrated µmol/(s·m²)) filtered by wavelength range
   const channelPAR = useMemo(() => {
@@ -635,6 +661,12 @@ export default function LightTools() {
             specify below the sliders. The default is 400-700&thinsp;nm (PAR), but you can change
             it to include far-red or a wider range as needed.
           </p>
+          <p>
+            UVB is only supported here once spectral calibration has been measured. For G4-G7 this has
+            not yet been measured because UV light is dangerous. For G8, the tool is ready to load UVB
+            automatically once the calibration CSV contains 20 extra UVB columns at the end of the file
+            (5% to 100% in 5% increments).
+          </p>
           <div className="border-t border-blue-200 pt-3 mt-1 space-y-1">
             <h4 className="font-semibold text-blue-800">More posters &amp; raw spectra</h4>
             <p>
@@ -667,7 +699,22 @@ export default function LightTools() {
           {lampCalError && <div className="text-xs text-red-600">{lampCalError}</div>}
           {lampCal && activeRoom && (
             <div className="text-xs text-green-700">
-              Loaded - {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {activeRoom.channels.length} channels x 20 levels - room: {activeRoom.id}
+              Loaded - {Object.values(lampCal)[0]?.[0]?.length ?? 0} wavelengths, {spectrumRoomChannels.length} channels x 20 levels - room: {activeRoom.id}
+            </div>
+          )}
+          {activeRoom && activeRoom.id !== "G8" && (
+            <div className="text-xs text-amber-700">
+              UVB has not yet been measured for {activeRoom.id}. UV light is dangerous, so only the measured lamp channels are available here.
+            </div>
+          )}
+          {activeRoom?.id === "G8" && lampCal && !hasMeasuredUvb && (
+            <div className="text-xs text-amber-700">
+              G8 UVB calibration is not in this CSV yet. Add 20 UVB columns at the end of the file (5% to 100% in 5% increments) and it will appear automatically.
+            </div>
+          )}
+          {activeRoom?.id === "G8" && hasMeasuredUvb && (
+            <div className="text-xs text-green-700">
+              G8 UVB calibration detected. The extra 20 UVB measurement columns were loaded successfully.
             </div>
           )}
         </div>
@@ -712,7 +759,7 @@ export default function LightTools() {
                 <span className="text-slate-500">nm</span>
               </div>
             </div>
-            {activeRoom.channels.map((ch) => (
+            {spectrumRoomChannels.map((ch) => (
               <div key={ch.key} className="flex items-center gap-2">
                 <div className="w-24 text-sm font-medium truncate" style={{ color: ch.color }}>{ch.label}</div>
                 <input
@@ -791,7 +838,7 @@ export default function LightTools() {
                     formatter={(v: any, name: string) => [(v as number).toPrecision(4), name]}
                   />
                   <Legend />
-                  {activeRoom.channels.map((ch) => (
+                  {spectrumRoomChannels.map((ch) => (
                     <Line
                       key={ch.key}
                       data={channelSpectra[ch.key] ?? []}
