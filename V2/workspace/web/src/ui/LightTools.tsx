@@ -773,8 +773,14 @@ export default function LightTools() {
             </div>
           )}
           {activeRoom && hasMeasuredUvb && (
-            <div className="text-xs text-green-700">
-              UVB calibration detected. The separate UV block with 4 measurement levels was loaded successfully.
+            <div className="space-y-2">
+              <div className="text-xs text-green-700">
+                UVB calibration detected. The separate UV block with 4 measurement levels was loaded successfully.
+              </div>
+              <ul className="list-disc pl-5 text-xs text-slate-700 space-y-1">
+                <li>Sunlight also contributes between 3 and 0.1 micromoles UVB, so even though the absolute micromoles may be small, their relative impact on anything biological is very strong at this level.</li>
+                <li>The UV was measured at 25, 50, 75, and 100% and interpolated to 1% increments because the Jeti could not accurately measure UV below the lamps' 25% settings.</li>
+              </ul>
             </div>
           )}
         </div>

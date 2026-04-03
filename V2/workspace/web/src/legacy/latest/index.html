@@ -135,7 +135,6 @@
       <div class="instruction" style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa">
         <div style="font-size:14px;line-height:1.5;margin-bottom:6px">
           <div>Credits: Made by Danna Shao and Maarten Bots</div>
-          <div>Version History: V1 (21-11-2025)</div>
           <div>Instructions: see <a href="https://github.com/NPEC-NL/Faketotron/blob/NPEC-WU/README.md" target="_blank" rel="noreferrer">ReadMe / tutorial</a></div>
           <div><strong>Included example protocols:</strong> <a href="https://github.com/NPEC-NL/Faketotron/tree/NPEC-WU/Standard%20Protocols" target="_blank" rel="noreferrer">G4, G5, G6, G7, G8 (incl. crazy experimental variants)</a></div>
         </div>
@@ -983,11 +982,14 @@ function validatePhaseForTarget(varType, phase, mode='clamp'){
   const rk = (typeof resolveRangeKey==='function'? resolveRangeKey(varType) : varType);
   const rng = RANGES[rk] || { min: 0, max: 100, int: true };
   if(!rng) return { ok:true, fixed: phase, issues: [] };
+  const storedRange = rng.scale
+    ? { ...rng, min: rng.min * rng.scale, max: rng.max * rng.scale }
+    : rng;
 
   // humidity cloud exception (same as buildPhaseFields UI hint)
   const effRangeForCloud = (varType==='Humidity')
     ? { min: 0, max: 100, scale: rng.scale }   // amplitude/offset use 0–100 for humidity
-    : rng;
+    : storedRange;
 
   const isTemp = (varType === 'Temperature');
   const mustInt = (k)=> !isTemp; // Temperature allows decimals in UI, stored ×10 here
@@ -1026,20 +1028,20 @@ function validatePhaseForTarget(varType, phase, mode='clamp'){
 
   // Validate per type
   if(out.type === 'const'){
-    if(!handle('value', rng.min, rng.max, mustInt('value'))) return {ok:false, fixed: out, issues};
+    if(!handle('value', storedRange.min, storedRange.max, mustInt('value'))) return {ok:false, fixed: out, issues};
   }
   else if(out.type === 'ramp'){
     if(!checkDur('duration')) return {ok:false, fixed: out, issues};
-    if(!handle('start', rng.min, rng.max, mustInt('start'))) return {ok:false, fixed: out, issues};
-    if(!handle('end',   rng.min, rng.max, mustInt('end')))   return {ok:false, fixed: out, issues};
+    if(!handle('start', storedRange.min, storedRange.max, mustInt('start'))) return {ok:false, fixed: out, issues};
+    if(!handle('end',   storedRange.min, storedRange.max, mustInt('end')))   return {ok:false, fixed: out, issues};
     // keep step as-is (fixed in UI)
   }
   else if(out.type === 'sin'){
     if(!checkDur('duration')) return {ok:false, fixed: out, issues};
     if(!checkDur('period'))   return {ok:false, fixed: out, issues};
     if(!checkDur('phaseOffset')) return {ok:false, fixed: out, issues};
-    if(!handle('min', rng.min, rng.max, mustInt('min'))) return {ok:false, fixed: out, issues};
-    if(!handle('max', rng.min, rng.max, mustInt('max'))) return {ok:false, fixed: out, issues};
+    if(!handle('min', storedRange.min, storedRange.max, mustInt('min'))) return {ok:false, fixed: out, issues};
+    if(!handle('max', storedRange.min, storedRange.max, mustInt('max'))) return {ok:false, fixed: out, issues};
     // swap if inverted
     if(Number(out.min) > Number(out.max)){
       if(mode==='reject'){ issues.push('min > max'); return {ok:false, fixed: out, issues}; }

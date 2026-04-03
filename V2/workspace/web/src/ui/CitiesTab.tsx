@@ -41,6 +41,7 @@ type FilterKey = (typeof FILTER_KEYS)[number];
 type CoverageMode = "sparse" | "expanded";
 type SpectrumView = "target" | "reconstructed" | "both";
 type CityUnit = "energy" | "photon";
+type TemperatureMode = "constant" | "follow-light";
 
 type MonthOption = {
   value: number;
@@ -100,6 +101,7 @@ type ParsedCityRow = {
 
 type ParsedCityFile = {
   fileName: string;
+  sourceUnit: CityUnit;
   wavelengthsNm: number[];
   rows: ParsedCityRow[];
   cities: string[];
@@ -215,11 +217,35 @@ function formatTimeOfDay(minutes: number): string {
   return `${String(Math.floor(clamped / 60)).padStart(2, "0")}:${String(clamped % 60).padStart(2, "0")}`;
 }
 
-function parseCityAverageDayCsv(text: string, fileName: string, unit: CityUnit): ParsedCityFile {
+function detectCityCsvUnit(lines: string[], header: string[]): CityUnit {
+  const unitIndex = header.findIndex((column) => column === "fit_unit" || column === "unit");
+  if (unitIndex >= 0) {
+    const values = Array.from(
+      new Set(
+        lines
+          .slice(1)
+          .map((line) => splitCsvLine(line, ",")[unitIndex] ?? "")
+          .map((value) => String(value).trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+    if (values.includes("photon")) return "photon";
+    if (values.includes("energy")) return "energy";
+  }
+
+  return "energy";
+}
+
+function cityUnitLabel(unit: CityUnit): string {
+  return unit === "photon" ? "Photon: umol/(s*m2*nm)" : "Energy: W/(m2*nm)";
+}
+
+function parseCityAverageDayCsv(text: string, fileName: string): ParsedCityFile {
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) throw new Error("City CSV is empty.");
 
   const header = splitCsvLine(lines[0], ",").map((cell) => cell.trim());
+  const unit = detectCityCsvUnit(lines, header);
   const spectralColumns = header
     .map((column, index) => ({ column, index, nm: Number(column) }))
     .filter((entry) => Number.isFinite(entry.nm))
@@ -290,6 +316,7 @@ function parseCityAverageDayCsv(text: string, fileName: string, unit: CityUnit):
 
   return {
     fileName,
+    sourceUnit: unit,
     wavelengthsNm: spectralColumns.map((entry) => entry.nm),
     rows,
     cities: Array.from(new Set(rows.map((row) => row.locationName))).sort((a, b) => a.localeCompare(b)),
@@ -728,6 +755,50 @@ function findPlaybackStartIndex(bins: CalibrationBin[], coverageMode: CoverageMo
   return Math.max(0, firstSignalIndex - 1);
 }
 
+function getPartGroupName(part: any): string {
+  return String(part?.["group-name"] ?? part?.name ?? "").trim();
+}
+
+function findPartIndex(parts: any[], names: string[]): number {
+  const expected = new Set(names.map((name) => name.trim()).filter(Boolean));
+  return parts.findIndex((part) => expected.has(getPartGroupName(part)));
+}
+
+function buildConstantPhase(value: number) {
+  return { type: "const", value, duration: "24:00:00" } as const;
+}
+
+function buildTemperatureFollowPoints(
+  bins: CalibrationBin[],
+  room: RoomConfig,
+  minTempC: number,
+  maxTempC: number,
+  avgTempC: number,
+): Array<[string, number]> {
+  if (bins.length === 0 || room.channels.length === 0) {
+    return [["24:00:00", Math.round(avgTempC * 10)]];
+  }
+
+  const normalizedLight = bins.map((bin) => {
+    const meanPercent =
+      room.channels.reduce((sum, channel) => sum + (bin.lampPercentages[channel.key] ?? 0), 0) / room.channels.length;
+    return meanPercent / 100;
+  });
+
+  const meanLight = normalizedLight.reduce((sum, value) => sum + value, 0) / normalizedLight.length;
+  const maxRise = normalizedLight.reduce((max, value) => Math.max(max, value - meanLight), 0);
+  const maxDrop = normalizedLight.reduce((max, value) => Math.max(max, meanLight - value), 0);
+  const riseScale = maxRise > 0 ? (maxTempC - avgTempC) / maxRise : Number.POSITIVE_INFINITY;
+  const dropScale = maxDrop > 0 ? (avgTempC - minTempC) / maxDrop : Number.POSITIVE_INFINITY;
+  const scale = Math.max(0, Math.min(riseScale, dropScale));
+
+  return normalizedLight.map((value) => {
+    const nextTemp = avgTempC + scale * (value - meanLight);
+    const clamped = Math.max(minTempC, Math.min(maxTempC, nextTemp));
+    return ["00:05:00", Math.round(clamped * 10)] as [string, number];
+  });
+}
+
 export default function CitiesTab() {
   const protocol = useProto((s: any) => s.protocol) as Protocol;
   const setProtocol = useProto((s: any) => s.setProtocol);
@@ -735,7 +806,6 @@ export default function CitiesTab() {
   const rooms = useMemo(() => Object.values(ROOM_CONFIGS), []);
 
   const [cityFile, setCityFile] = useState<File | null>(null);
-  const [cityUnit, setCityUnit] = useState<CityUnit>("energy");
   const [cityData, setCityData] = useState<ParsedCityFile | null>(null);
   const [parsingCityFile, setParsingCityFile] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
@@ -751,8 +821,21 @@ export default function CitiesTab() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [viewportWidth, setViewportWidth] = useState(() => (typeof window === "undefined" ? 1280 : window.innerWidth));
   const [error, setError] = useState("");
+  const [co2Constant, setCo2Constant] = useState("420");
+  const [humidityConstant, setHumidityConstant] = useState("63");
+  const [temperatureMode, setTemperatureMode] = useState<TemperatureMode>("constant");
+  const [temperatureConstant, setTemperatureConstant] = useState("13");
+  const [temperatureNightMin, setTemperatureNightMin] = useState("5");
+  const [temperatureDayMax, setTemperatureDayMax] = useState("20");
+  const [temperatureAverage, setTemperatureAverage] = useState("13");
 
   const activeRoom = ROOM_CONFIGS[selectedRoom] ?? rooms[0];
+  const protocolParts = protocol?.sections?.[0]?.parts ?? [];
+  const uvGroupName = useMemo(() => {
+    if (findPartIndex(protocolParts, ["UVB"]) >= 0) return "UVB";
+    if (findPartIndex(protocolParts, ["UVA"]) >= 0) return "UVA";
+    return "UVB";
+  }, [protocolParts]);
 
   const loadedCityName = useMemo(() => {
     if (!cityData || cityData.cities.length !== 1) return "";
@@ -787,7 +870,7 @@ export default function CitiesTab() {
       .text()
       .then((text) => {
         if (cancelled) return;
-        const parsed = parseCityAverageDayCsv(text, cityFile.name, cityUnit);
+        const parsed = parseCityAverageDayCsv(text, cityFile.name);
         setCityData(parsed);
         setSelectedMonth(null);
         if (parsed.cities.length > 1) {
@@ -811,7 +894,7 @@ export default function CitiesTab() {
     return () => {
       cancelled = true;
     };
-  }, [cityFile, cityUnit]);
+  }, [cityFile]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1038,6 +1121,46 @@ export default function CitiesTab() {
   function applyToFaketron() {
     if (!result) return;
 
+    const co2Value = Number(co2Constant);
+    const humidityValue = Number(humidityConstant);
+    const constantTempC = Number(temperatureConstant);
+    const nightMinC = Number(temperatureNightMin);
+    const dayMaxC = Number(temperatureDayMax);
+    const avgTempC = Number(temperatureAverage);
+    const uvValue = 0;
+
+    const minAllowedTemp = activeRoom.id === "G7" ? -4 : 4;
+    if (!Number.isFinite(co2Value) || co2Value < 0 || co2Value > 1000) {
+      setError("CO2 must be a number between 0 and 1000 ppm.");
+      return;
+    }
+    if (!Number.isFinite(humidityValue) || humidityValue < 35 || humidityValue > 90) {
+      setError("Humidity must be a number between 35 and 90%.");
+      return;
+    }
+    if (temperatureMode === "constant") {
+      if (!Number.isFinite(constantTempC) || constantTempC < minAllowedTemp || constantTempC > 42) {
+        setError(`Constant temperature must be between ${minAllowedTemp} and 42 °C for ${activeRoom.id}.`);
+        return;
+      }
+    } else {
+      if (
+        !Number.isFinite(nightMinC) ||
+        !Number.isFinite(dayMaxC) ||
+        !Number.isFinite(avgTempC) ||
+        nightMinC < minAllowedTemp ||
+        dayMaxC > 42 ||
+        nightMinC > dayMaxC ||
+        avgTempC < nightMinC ||
+        avgTempC > dayMaxC
+      ) {
+        setError(
+          `Follow-light temperature needs valid bounds for ${activeRoom.id}: min ${minAllowedTemp}-42 °C, max ${minAllowedTemp}-42 °C, and average between them.`,
+        );
+        return;
+      }
+    }
+
     const next = typeof structuredClone === "function"
       ? structuredClone(protocol)
       : JSON.parse(JSON.stringify(protocol));
@@ -1056,8 +1179,19 @@ export default function CitiesTab() {
       return;
     }
 
+    const requiredControls = ["CO2", "Humidity", "Temperature", uvGroupName];
+    const missingControls = requiredControls.filter((name) => findPartIndex(parts, [name]) < 0);
+    if (missingControls.length > 0) {
+      const message =
+        `Current protocol is missing required control groups: ${missingControls.join(", ")}. ` +
+        "Load or create a matching room protocol first.";
+      setError(message);
+      window.alert(message);
+      return;
+    }
+
     for (const channel of result.room.channels) {
-      const groupIndex = parts.findIndex((part: any) => ((part?.["group-name"] || part?.name) ?? "") === channel.protocolGroupName);
+      const groupIndex = findPartIndex(parts, [channel.protocolGroupName]);
       const points = result.expandedBins.map((bin) => durationPoint(bin.lampPercentages[channel.key] ?? 0));
       parts[groupIndex] = {
         ...parts[groupIndex],
@@ -1066,6 +1200,37 @@ export default function CitiesTab() {
       };
     }
 
+    const co2Index = findPartIndex(parts, ["CO2"]);
+    parts[co2Index] = {
+      ...parts[co2Index],
+      "group-name": parts[co2Index]?.["group-name"] ?? parts[co2Index]?.name ?? "CO2",
+      phases: [buildConstantPhase(Math.round(co2Value))],
+    };
+
+    const humidityIndex = findPartIndex(parts, ["Humidity"]);
+    parts[humidityIndex] = {
+      ...parts[humidityIndex],
+      "group-name": parts[humidityIndex]?.["group-name"] ?? parts[humidityIndex]?.name ?? "Humidity",
+      phases: [buildConstantPhase(Math.round(humidityValue))],
+    };
+
+    const temperatureIndex = findPartIndex(parts, ["Temperature"]);
+    parts[temperatureIndex] = {
+      ...parts[temperatureIndex],
+      "group-name": parts[temperatureIndex]?.["group-name"] ?? parts[temperatureIndex]?.name ?? "Temperature",
+      phases:
+        temperatureMode === "constant"
+          ? [buildConstantPhase(Math.round(constantTempC * 10))]
+          : [{ type: "csv-import", points: buildTemperatureFollowPoints(result.expandedBins, result.room, nightMinC, dayMaxC, avgTempC) }],
+    };
+
+    const uvIndex = findPartIndex(parts, [uvGroupName]);
+    parts[uvIndex] = {
+      ...parts[uvIndex],
+      "group-name": parts[uvIndex]?.["group-name"] ?? parts[uvIndex]?.name ?? uvGroupName,
+      phases: [buildConstantPhase(Math.round(uvValue))],
+    };
+
     next.sections[0].parts = parts.map((part: any) =>
       part && part["group-name"] == null && part.name ? { ...part, "group-name": part.name } : part,
     );
@@ -1073,7 +1238,7 @@ export default function CitiesTab() {
     setProtocol(next);
     window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: next } }));
     setError("");
-    window.alert(`Applied the expanded 24h schedule to ${result.room.id}.`);
+    window.alert(`Applied the expanded 24h schedule and control settings to ${result.room.id}.`);
   }
 
   return (
@@ -1081,14 +1246,57 @@ export default function CitiesTab() {
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700 space-y-2">
         <h3 className="text-lg font-semibold text-emerald-900">Cities Calibration</h3>
         <p>
-          This tab runs entirely in the browser. Upload one city average-day CSV and the room calibration CSV, then fit a
-          Faketron day profile with no backend or database.
+          THIS IS STILL UNDER CONSTRUCTION! Upload one city average-day CSV and one room calibration CSV to fit a Faketron day profile.
         </p>
-        <p>The measurement slice is auto-selected behind the scenes to keep the UI minimal.</p>
+        <p>
+          The city CSV represents one average 24-hour day for a single city, split into 5-minute bins, for the
+          month that you select here. When available, the tool automatically uses the
+          <code className="mx-1">spectral_horizontal_irradiance</code>
+          slice from that monthly average-day file.
+        </p>
+        <p>
+          The workflow is: first the outdoor daylight spectrum is taken from the city dataset for each 5-minute time
+          bin of the selected average day, then that spectrum is compared against the measured lamp spectra of the
+          selected room. The lamp calibration CSV contains Jeti measurements of each lamp channel at known dimming
+          percentages. The tool interpolates between those measurements, reconstructs possible lamp spectra for
+          0-100%, and then fits the combination of indoor lamps that best matches the outside spectral target at each
+          time bin.
+        </p>
+        <p>
+          In practice this means the outside measurement is the spectral target, and the room calibration tells the
+          tool what each lamp channel can produce indoors. The fitting step converts that outdoor target into a Faketron
+          schedule by finding lamp percentages that minimize the spectral error, shown here as RMSE, within the nm
+          window you choose.
+        </p>
+        <p>
+          Most of the city daylight data used here comes from the SKYSPECTRA dataset:
+          <a
+            href="https://zenodo.org/records/8147546"
+            target="_blank"
+            rel="noreferrer"
+            className="ml-1 text-emerald-700 underline"
+          >
+            https://zenodo.org/records/8147546
+          </a>
+          .
+        </p>
+        <p>
+          <strong>SKYSPECTRA: an opensource data package for worldwide spectral daylight</strong> is described there as
+          an open-source data package of worldwide spectral daylight measurements collected from multiple long-term
+          sites and specific experiments. For research use, cite: Balakrishnan, P., Diakite-Kortlever, A., Dumortier,
+          D., Hernandez-Andres, J., Kenny, P., Maskarenj, M., Pierson, C., Thorseth, A., Xue, P., &amp; Knoop, M.
+          (2023). <em>SKYSPECTRA: An Opensource Data Package of Worldwide Spectral Daylight</em>, Proceedings of the
+          30th session of the CIE Conference, Ljubljana, Slovenia. DOI:10.25039/x50.2023.OP026.
+        </p>
+        <p>
+          The dataset documentation also notes that this project was funded by the European Union's Horizon 2020
+          research and innovation programme under the Marie Sklodowska-Curie Individual Fellowship, grant agreement
+          No. 101032279.
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 h-full">
           <h4 className="font-semibold text-slate-900">1. Data Selection</h4>
 
           <div>
@@ -1108,18 +1316,6 @@ export default function CitiesTab() {
             >
               Download the city CSV files
             </a>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">City CSV unit</label>
-            <select
-              className="w-full rounded border border-slate-300 p-2 text-sm"
-              value={cityUnit}
-              onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setCityUnit(event.target.value as CityUnit)}
-            >
-              <option value="energy">Energy: W/(m2*nm)</option>
-              <option value="photon">Photon: umol/(s*m2*nm)</option>
-            </select>
           </div>
 
           <div>
@@ -1166,6 +1362,14 @@ export default function CitiesTab() {
               className="block w-full text-sm"
             />
             <div className="mt-2 text-xs text-slate-500">{calibrationFile ? calibrationFile.name : "No calibration CSV selected."}</div>
+            <a
+              href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing"
+              target="_blank"
+              rel="noreferrer"
+              className="mt-2 inline-block text-xs text-emerald-700 underline"
+            >
+              Download the calibration CSV files
+            </a>
           </div>
 
           <button
@@ -1180,12 +1384,13 @@ export default function CitiesTab() {
           {cityData ? (
             <div className="rounded border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
               <div>{citySummary}</div>
+              <div className="mt-1">Detected file unit: {cityUnitLabel(cityData.sourceUnit)}</div>
               <div className="mt-1">Loaded {cityData.rows.length} rows and {cityData.wavelengthsNm.length} wavelengths.</div>
             </div>
           ) : null}
         </div>
 
-        <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 lg:col-span-2">
+        <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 h-full">
           <h4 className="font-semibold text-slate-900">2. Fit and Display</h4>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1250,7 +1455,7 @@ export default function CitiesTab() {
           {scopedRows.length > 0 && selectedMonth != null ? (
             <div className="text-xs text-slate-500">
               {scopedRows.length} rows are available for {loadedCityName} {monthOptions.find((option) => option.value === selectedMonth)?.label ?? ""}.
-              The measurement slice is auto-selected behind the scenes.
+              This is the selected month-long average day, and the measurement slice is auto-selected behind the scenes.
             </div>
           ) : null}
         </div>
@@ -1290,13 +1495,7 @@ export default function CitiesTab() {
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
                 <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
                   <div><strong>Time:</strong> {currentBin.timeOfDay}</div>
-                  <div><strong>Filled bin:</strong> {currentBin.wasFilled ? "Yes" : "No"}</div>
-                  <div><strong>Samples averaged:</strong> {currentBin.samplesAveraged ?? "-"}</div>
                   <div><strong>RMSE:</strong> {currentBin.fit.rmse?.toFixed(4) ?? "-"}</div>
-                  <div><strong>MAE:</strong> {currentBin.fit.mae?.toFixed(4) ?? "-"}</div>
-                  <div><strong>Target integral:</strong> {currentBin.fit.targetIntegral?.toFixed(2) ?? "-"}</div>
-                  <div><strong>Reconstructed integral:</strong> {currentBin.fit.reconstructedIntegral?.toFixed(2) ?? "-"}</div>
-                  <div><strong>Playback speed:</strong> {PLAYBACK_STEP_MS} ms per bin</div>
                 </div>
 
                 <div className="xl:col-span-3">
@@ -1368,7 +1567,103 @@ export default function CitiesTab() {
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <h4 className="font-semibold text-slate-900 mb-3">5. Actions</h4>
+            <h4 className="font-semibold text-slate-900 mb-3">5. Faketron Actions</h4>
+            <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-4 space-y-4">
+              <div className="text-sm text-slate-700">
+                These settings are applied together with the fitted light schedule when you upload to the Faketron.
+                CO2, Humidity, and {uvGroupName} are written as constant 24-hour phases. Temperature can be constant
+                as well, or it can follow the average light-intensity trend.
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">CO2 constant (ppm)</label>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                    value={co2Constant}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => setCo2Constant(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Humidity constant (%)</label>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                    value={humidityConstant}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => setHumidityConstant(event.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Temperature mode</label>
+                  <select
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                    value={temperatureMode}
+                    onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setTemperatureMode(event.target.value as TemperatureMode)}
+                  >
+                    <option value="constant">Constant 24h</option>
+                    <option value="follow-light">Follow average light intensity</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="text-xs text-amber-700">
+                {uvGroupName} is set to 0%, constant for 24 hours. Adapt this yourself afterwards if you want UV exposure.
+              </div>
+
+              {temperatureMode === "constant" ? (
+                <div className="max-w-xs">
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Temperature constant (°C)</label>
+                  <input
+                    type="number"
+                    className="w-full rounded border border-slate-300 p-2 text-sm"
+                    value={temperatureConstant}
+                    onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemperatureConstant(event.target.value)}
+                  />
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-sm text-slate-700">
+                    The follow-light option uses the average fitted lamp-intensity curve across the day and maps it to a
+                    temperature profile that stays within your minimum and maximum while keeping your chosen daily average.
+                  </div>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Night minimum (°C)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                        value={temperatureNightMin}
+                        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemperatureNightMin(event.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Day maximum (°C)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                        value={temperatureDayMax}
+                        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemperatureDayMax(event.target.value)}
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Daily average (°C)</label>
+                      <input
+                        type="number"
+                        className="w-full rounded border border-slate-300 p-2 text-sm"
+                        value={temperatureAverage}
+                        onChange={(event: React.ChangeEvent<HTMLInputElement>) => setTemperatureAverage(event.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-3">
               <button
                 type="button"

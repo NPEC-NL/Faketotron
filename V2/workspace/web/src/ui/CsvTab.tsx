@@ -1,6 +1,10 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as Store from "../state/store";
+import { PROFILES, type ProfileKey } from "../profiles";
+import { RANGES } from "../ranges";
 import { formatDurationPreserveDays } from "../utils/time";
+import { ROOM_CONFIGS } from "../utils/rooms";
+
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
 /**
@@ -18,11 +22,18 @@ const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 type AnalyzeOptions = {
   secondsIndex: number;
   valueIndex: number;
-  delimiter?: string | null; // if null/undefined → auto sniff
+  delimiter?: string | null;
   verbose?: boolean;
 };
 
 type Phase = { value: any; duration_seconds: number };
+
+type CsvTargetOption = {
+  name: string;
+  unit: string;
+  rangeKey: string;
+  isLamp: boolean;
+};
 
 function formatHHMMSS(totalSec: number): string {
   const sec = Math.trunc(Number(totalSec) || 0);
@@ -38,11 +49,10 @@ function tryParseNumber(v: any): number | string | "" {
   const s = String(v).trim();
   if (!s) return "";
   const f = Number(s);
-  if (!Number.isFinite(f)) return s; // keep as string if not numeric
+  if (!Number.isFinite(f)) return s;
   return Number.isInteger(f) ? parseInt(String(f), 10) : f;
 }
 
-// pick delimiter with most occurrences in sample
 function sniffDelimiter(sample: string): string {
   const candidates = [",", ";", "\t", "|"];
   let best = ",";
@@ -58,7 +68,6 @@ function sniffDelimiter(sample: string): string {
   return best;
 }
 
-// RFC4180-ish line splitter with quotes
 function splitCSVLine(line: string, delimiter: string): string[] {
   const cells: string[] = [];
   let cur = "";
@@ -69,7 +78,7 @@ function splitCSVLine(line: string, delimiter: string): string[] {
     if (inQuotes) {
       if (ch === '"') {
         if (line[i + 1] === '"') {
-          cur += '"'; // escaped quote
+          cur += '"';
           i++;
         } else {
           inQuotes = false;
@@ -88,21 +97,23 @@ function splitCSVLine(line: string, delimiter: string): string[] {
       }
     }
   }
+
   cells.push(cur);
   return cells;
 }
 
 function analyzeSimpleFromText(
   text: string,
-  { secondsIndex, valueIndex, delimiter, verbose }: AnalyzeOptions
+  { secondsIndex, valueIndex, delimiter, verbose }: AnalyzeOptions,
 ): { phases: Phase[]; durMap: Record<number, any> } {
   const sample = text.slice(0, 4096);
   const delim = delimiter ?? sniffDelimiter(sample);
   if (verbose) console.log("[INFO] Using delimiter:", JSON.stringify(delim));
-  if (verbose)
+  if (verbose) {
     console.log(
-      `[INFO] Index-based parsing. secondsIndex=${secondsIndex}, valueIndex=${valueIndex}`
+      `[INFO] Index-based parsing. secondsIndex=${secondsIndex}, valueIndex=${valueIndex}`,
     );
+  }
 
   const lines = text.split(/\r?\n/);
   const phases: Phase[] = [];
@@ -115,17 +126,18 @@ function analyzeSimpleFromText(
     const cells = splitCSVLine(line, delim);
 
     const allBlank = cells.every((c) =>
-      (typeof c === "string" ? c : String(c)).trim() === ""
+      (typeof c === "string" ? c : String(c)).trim() === "",
     );
     if (allBlank) continue;
 
     totalRows += 1;
     const needed = Math.max(secondsIndex, valueIndex) + 1;
     if (cells.length < needed) {
-      if (verbose)
+      if (verbose) {
         console.warn(
-          `[WARN] Row ${totalRows}: expected >= ${needed} columns, got ${cells.length} -> skipping`
+          `[WARN] Row ${totalRows}: expected >= ${needed} columns, got ${cells.length} -> skipping`,
         );
+      }
       continue;
     }
 
@@ -136,15 +148,15 @@ function analyzeSimpleFromText(
     let val = tryParseNumber(rawVal);
 
     if (typeof val === "number" && Number.isFinite(val)) {
-      // round to 1 decimal like Python version
       val = Math.round((val + Number.EPSILON) * 10) / 10;
     }
 
     if (!(typeof sec === "number" && Number.isFinite(sec))) {
-      if (verbose)
+      if (verbose) {
         console.warn(
-          `[WARN] Row ${totalRows}: invalid seconds=${JSON.stringify(rawSec)} -> skipping`
+          `[WARN] Row ${totalRows}: invalid seconds=${JSON.stringify(rawSec)} -> skipping`,
         );
+      }
       continue;
     }
 
@@ -156,10 +168,11 @@ function analyzeSimpleFromText(
     if (totalRows === 1) {
       prevValue = val;
       runDuration = Number(sec);
-      if (verbose)
+      if (verbose) {
         console.log(
-          `  -> Start new run: value=${JSON.stringify(prevValue)}, duration=${runDuration}`
+          `  -> Start new run: value=${JSON.stringify(prevValue)}, duration=${runDuration}`,
         );
+      }
       continue;
     }
 
@@ -171,18 +184,18 @@ function analyzeSimpleFromText(
         value: prevValue,
         duration_seconds: Math.trunc(Math.round(runDuration)),
       });
-      if (verbose)
+      if (verbose) {
         console.log(
-          `  -> Value changed: closed run value=${JSON.stringify(
-            prevValue
-          )}, duration=${runDuration}`
+          `  -> Value changed: closed run value=${JSON.stringify(prevValue)}, duration=${runDuration}`,
         );
+      }
       prevValue = val;
       runDuration = Number(sec);
-      if (verbose)
+      if (verbose) {
         console.log(
-          `  -> Start new run: value=${JSON.stringify(prevValue)}, duration=${runDuration}`
+          `  -> Start new run: value=${JSON.stringify(prevValue)}, duration=${runDuration}`,
         );
+      }
     }
   }
 
@@ -191,12 +204,11 @@ function analyzeSimpleFromText(
       value: prevValue,
       duration_seconds: Math.trunc(Math.round(runDuration)),
     });
-    if (verbose)
+    if (verbose) {
       console.log(
-        `[INFO] Closed final run value=${JSON.stringify(
-          prevValue
-        )}, duration=${runDuration}`
+        `[INFO] Closed final run value=${JSON.stringify(prevValue)}, duration=${runDuration}`,
       );
+    }
   }
 
   const durMap: Record<number, any> = {};
@@ -204,9 +216,7 @@ function analyzeSimpleFromText(
     const d = Math.trunc(ph.duration_seconds);
     if (durMap[d] !== undefined && verbose) {
       console.warn(
-        `[WARN] Duplicate duration ${d}; overriding ${JSON.stringify(
-          durMap[d]
-        )} -> ${JSON.stringify(ph.value)}`
+        `[WARN] Duplicate duration ${d}; overriding ${JSON.stringify(durMap[d])} -> ${JSON.stringify(ph.value)}`,
       );
     }
     durMap[d] = ph.value;
@@ -215,28 +225,127 @@ function analyzeSimpleFromText(
   return { phases, durMap };
 }
 
+function getGroupName(group: any): string {
+  return String(group?.["group-name"] ?? group?.name ?? "").trim();
+}
+
+function normalizeTargetKey(value: string): string {
+  return String(value || "").toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function resolveRangeKey(group: any): string {
+  const nameKey = normalizeTargetKey(getGroupName(group));
+  const typeKey = normalizeTargetKey(String(group?.type ?? ""));
+  const map: Record<string, string> = {
+    amber: "Amber",
+    blue: "Blue",
+    co2: "CO2",
+    coolwhite: "Cool White",
+    cyan: "Cyan",
+    deepred: "DeepRed",
+    farred: "FarRed",
+    green: "Green",
+    humidity: "Humidity",
+    hydroponics: "Hydroponics",
+    red: "Red",
+    temperature: "Temperature",
+    uva: "UVA",
+    uvb: "UVB",
+    white: "Cool White",
+  };
+
+  return map[typeKey] ?? map[nameKey] ?? getGroupName(group);
+}
+
+function getInputRange(rangeKey: string, profile: ProfileKey) {
+  if (rangeKey === "Temperature") {
+    return {
+      min: profile === "G7" ? -4 : 4,
+      max: 42,
+      int: false,
+      scale: 10,
+    };
+  }
+
+  const range = RANGES[rangeKey] ?? { min: 0, max: 100, int: true };
+  return {
+    min: range.min,
+    max: range.max,
+    int: range.int !== false,
+    scale: range.scale,
+  };
+}
+
+function formatRangeValue(value: number, unit: string) {
+  if (unit === "celsius") return `${value} °C`;
+  if (unit === "percent") return `${value}%`;
+  if (unit === "ppm") return `${value} ppm`;
+  return String(value);
+}
+
 /* ===================== UI Component ===================== */
 
 export default function CsvPhaseAnalyzer() {
-  // Parsing options (fixed column indices per requirements)
   const secondsIndex = 0;
   const valueIndex = 1;
-  const [delimiter, setDelimiter] = useState<string>(""); // empty = auto
-  const [verbose, setVerbose] = useState(false);
+  const [delimiter, setDelimiter] = useState<string>("");
+  const [verbose] = useState(false);
+  const [targetParam, setTargetParam] = useState<string>("");
 
-  // Target options (only parameter; applies to the currently open room/protocol)
-  const [targetParam, setTargetParam] = useState<"Temperature" | "Cool White">("Temperature");
-
-  // App protocol state
   const protocol = useProto((s: any) => s.protocol);
   const setProtocol = useProto((s: any) => s.setProtocol);
-  const profile = useProto((s: any) => s.profile) as string;
+  const profile = useProto((s: any) => s.profile) as ProfileKey;
 
   const [fileName, setFileName] = useState<string>("");
   const [rawText, setRawText] = useState<string>("");
   const [error, setError] = useState<string>("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const protocolParts = protocol?.sections?.[0]?.parts ?? [];
+  const roomConfig = ROOM_CONFIGS[profile];
+  const roomLampSummary = roomConfig?.channels.map((channel) => channel.label).join(", ") ?? "";
+
+  const targetOptions = useMemo<CsvTargetOption[]>(() => {
+    const sourceParts = protocolParts.length ? protocolParts : PROFILES[profile]?.groups ?? [];
+    const lampGroups = new Set(
+      roomConfig?.channels.map((channel) => channel.protocolGroupName) ?? [],
+    );
+    const seen = new Set<string>();
+
+    return sourceParts
+      .map((part: any) => {
+        const name = getGroupName(part);
+        if (!name || seen.has(name)) return null;
+        seen.add(name);
+        return {
+          name,
+          unit: String(part?.unit ?? ""),
+          rangeKey: resolveRangeKey(part),
+          isLamp: lampGroups.has(name),
+        };
+      })
+      .filter((option): option is CsvTargetOption => option !== null);
+  }, [protocolParts, profile, roomConfig]);
+
+  const selectedTarget = useMemo(
+    () => targetOptions.find((option) => option.name === targetParam) ?? null,
+    [targetOptions, targetParam],
+  );
+
+  const selectedTargetRange = useMemo(
+    () => (selectedTarget ? getInputRange(selectedTarget.rangeKey, profile) : null),
+    [selectedTarget, profile],
+  );
+
+  useEffect(() => {
+    if (!targetOptions.length) {
+      if (targetParam) setTargetParam("");
+      return;
+    }
+    if (!targetOptions.some((option) => option.name === targetParam)) {
+      setTargetParam(targetOptions[0].name);
+    }
+  }, [targetOptions, targetParam]);
 
   const result = useMemo<
     | null
@@ -245,18 +354,15 @@ export default function CsvPhaseAnalyzer() {
   >(() => {
     if (!rawText) return null;
     try {
-      let { phases } = analyzeSimpleFromText(rawText, {
+      const { phases } = analyzeSimpleFromText(rawText, {
         secondsIndex,
         valueIndex,
         delimiter: delimiter ? delimiter : undefined,
         verbose,
       });
 
-      // Keep seconds resolution: do not round to minutes and do not drop short runs.
-      // Still group consecutive identical values (handled by analyzeSimpleFromText).
-
       const points: [string, any][] = [];
-      for (const ph of phases as Phase[]) {
+      for (const ph of phases) {
         const dur = Number(ph?.duration_seconds ?? 0);
         if (dur > 0) points.push([formatDurationPreserveDays(dur), ph.value]);
       }
@@ -285,109 +391,155 @@ export default function CsvPhaseAnalyzer() {
 
   function mapValueForTarget(v: any): number {
     if (typeof v !== "number" || !Number.isFinite(v)) return 0;
-    if (targetParam === "Temperature") {
-      // internal representation expects tenths of degree, e.g. 40.1 -> 401
-      return Math.round(v * 10);
+    if (!selectedTarget || !selectedTargetRange) return Math.round(v);
+
+    if (selectedTarget.rangeKey === "Temperature") {
+      return Math.round(v * selectedTargetRange.scale);
     }
-    // Cool White: 0..100 integer percent
-    const iv = Math.round(v);
-    if (iv < 0) return 0;
-    if (iv > 100) return 100;
-    return iv;
+
+    let next = selectedTargetRange.int ? Math.round(v) : v;
+    next = Math.max(selectedTargetRange.min, Math.min(selectedTargetRange.max, next));
+
+    if (selectedTargetRange.scale) next *= selectedTargetRange.scale;
+    return Math.round(next);
   }
 
-  // Apply will modify the currently loaded protocol in the editor. The group names
-  // (Temperature, Cool White) are consistent across G4–G8.
   function applyToProtocol() {
     if (!result || "error" in result) return;
     try {
-      const pointsRaw = (result as any).points as [string, any][];
-
-      // --- Temperature bounds check (warn, don’t block) ---
-      if (targetParam === "Temperature") {
-        const minDeg = profile === "G7" ? -4 : 4;
-        const maxDeg = 42;
-        const bad = pointsRaw
-          .map(([, v]) => (typeof v === "number" ? v : Number(v)))
-          .filter((v) => Number.isFinite(v) && (v < minDeg || v > maxDeg));
-        if (bad.length > 0) {
-          const examples = [...new Set(bad)]
-            .slice(0, 5)
-            .map((v) => `${v} °C`)
-            .join(", ");
-          const ok = window.confirm(
-            `⚠️ ${bad.length} temperature point(s) are outside the allowed range ` +
-            `(${minDeg}–${maxDeg} °C for ${profile}):\n${examples}\n\nApply anyway?`
-          );
-          if (!ok) return;
-        }
+      if (!selectedTarget || !selectedTargetRange) {
+        alert("No target parameter is available for the current room.");
+        return;
       }
-      // Map values to machine scale (e.g., Temperature in tenths, Cool White 0..100)
+
+      const pointsRaw = result.points as [string, any][];
+      const bad = pointsRaw
+        .map(([, v]) => (typeof v === "number" ? v : Number(v)))
+        .filter(
+          (v) =>
+            Number.isFinite(v) &&
+            (v < selectedTargetRange.min || v > selectedTargetRange.max),
+        );
+
+      if (bad.length > 0) {
+        const examples = [...new Set(bad)]
+          .slice(0, 5)
+          .map((v) => formatRangeValue(v, selectedTarget.unit))
+          .join(", ");
+        const ok = window.confirm(
+          `${bad.length} ${selectedTarget.name} point(s) are outside the allowed range ` +
+          `(${formatRangeValue(selectedTargetRange.min, selectedTarget.unit)}-${formatRangeValue(selectedTargetRange.max, selectedTarget.unit)} for ${profile}):\n` +
+          `${examples}\n\nApply anyway?`,
+        );
+        if (!ok) return;
+      }
+
       const points = pointsRaw
         .filter(([t]) => !!t)
         .map(([t, v]) => [t, mapValueForTarget(v)] as [string, number]);
 
-      // Replace with a single phase of type "csv-import"
-      const replaced = [
-        {
-          type: "csv-import",
-          points,
-        } as any,
-      ];
-      const next = typeof structuredClone === "function"
-        ? structuredClone(protocol)
-        : JSON.parse(JSON.stringify(protocol));
+      const replaced = [{ type: "csv-import", points } as any];
+      const next =
+        typeof structuredClone === "function"
+          ? structuredClone(protocol)
+          : JSON.parse(JSON.stringify(protocol));
       const parts = next?.sections?.[0]?.parts || [];
-      const groupName = targetParam; // "Temperature" or "Cool White"
+      const groupName = selectedTarget.name;
       const gi = parts.findIndex((p: any) => (p["group-name"] || p.name) === groupName);
       if (gi < 0) {
         alert(`Group not found in current protocol: ${groupName}`);
         return;
       }
+
       parts[gi].phases = replaced;
-      // Ensure legacy compatibility: guarantee group-name present on all parts
       for (const p of parts) {
         if (p && p["group-name"] == null && p.name) p["group-name"] = p.name;
       }
       next.sections[0].parts = parts;
       setProtocol(next);
-      // push to legacy editor via the expected event
-      window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: next } }));
+      window.dispatchEvent(
+        new CustomEvent("protocol:save-draft", { detail: { protocol: next } }),
+      );
       alert(`${groupName} phases replaced from CSV (${replaced.length} phases).`);
     } catch (e: any) {
       alert("Failed to apply phases: " + (e?.message || String(e)));
     }
   }
 
-  // no-op
-
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       <h2 className="text-xl font-semibold">Import Time-Series CSV</h2>
       <p className="text-sm text-slate-600">
-        Import a second-by-second time series and automatically convert it into a structured phase schedule.
-        This option is ideal when you already have a predefined program, such as:
+        Import a second-by-second time series and automatically convert it into a structured phase
+        schedule. This option is ideal when you already have a predefined program, such as:
       </p>
       <ul className="text-sm text-slate-600 list-disc list-inside space-y-1 ml-1">
-        <li>A long Cool White pulse pattern</li>
+        <li>A light pulse pattern for one room-specific lamp channel</li>
         <li>A measured temperature schedule</li>
         <li>A precise step program created in Excel</li>
       </ul>
 
-      <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: "12px 16px" }}>
-        <div className="text-sm font-semibold text-slate-700" style={{ marginBottom: 6 }}>Required format</div>
+      <div
+        style={{
+          background: "#f8fafc",
+          border: "1px solid #e2e8f0",
+          borderRadius: 8,
+          padding: "12px 16px",
+        }}
+      >
+        <div className="text-sm font-semibold text-slate-700" style={{ marginBottom: 6 }}>
+          Required format
+        </div>
         <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-          <li>Two columns per row: <code>seconds, value</code></li>
-          <li><b>No header row!</b></li>
+          <li>
+            Two columns per row: <code>seconds, value</code>
+          </li>
+          <li>
+            <b>No header row!</b>
+          </li>
           <li>Delimiter can be comma, semicolon, or tab</li>
-          <li>See Google Drive for example files</li>
+          <li>
+            See{" "}
+            <a
+              href="https://drive.google.com/drive/folders/1mkEiaF3XQERiai2J5IFtx8lXEVUDUHWX?usp=sharing"
+              target="_blank"
+              rel="noreferrer"
+              className="text-blue-700 underline"
+            >
+              this Google Drive folder
+            </a>{" "}
+            for 2 example CSVs
+          </li>
         </ul>
-        <div className="text-sm font-semibold text-slate-700" style={{ marginTop: 10, marginBottom: 4 }}>Example (conceptual)</div>
-        <pre style={{ background: "#f1f5f9", borderRadius: 6, padding: "6px 10px", fontSize: 12, color: "#334155", margin: 0 }}>{`0, 10\n1, 10\n2, 10\n3, 20`}</pre>
+        <div
+          className="text-sm font-semibold text-slate-700"
+          style={{ marginTop: 10, marginBottom: 4 }}
+        >
+          Example (conceptual)
+        </div>
+        <pre
+          style={{
+            background: "#f1f5f9",
+            borderRadius: 6,
+            padding: "6px 10px",
+            fontSize: 12,
+            color: "#334155",
+            margin: 0,
+          }}
+        >{`0, 10\n1, 10\n2, 10\n3, 20`}</pre>
       </div>
 
-      <div style={{ background: "#f0fdf4", border: "1px solid #bbf7d0", borderRadius: 8, padding: "12px 16px" }}>
-        <div className="text-sm font-semibold text-slate-700" style={{ marginBottom: 6 }}>What happens automatically</div>
+      <div
+        style={{
+          background: "#f0fdf4",
+          border: "1px solid #bbf7d0",
+          borderRadius: 8,
+          padding: "12px 16px",
+        }}
+      >
+        <div className="text-sm font-semibold text-slate-700" style={{ marginBottom: 6 }}>
+          What happens automatically
+        </div>
         <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
           <li>The delimiter is detected automatically</li>
           <li>Consecutive identical values are grouped into single phases</li>
@@ -396,19 +548,34 @@ export default function CsvPhaseAnalyzer() {
         </ul>
       </div>
 
-      {/* Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
         <div>
           <label className="block text-sm font-medium mb-1">Target parameter</label>
           <select
             className="border rounded p-2 w-full"
             value={targetParam}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetParam(e.target.value as any)}
+            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetParam(e.target.value)}
+            disabled={!targetOptions.length}
           >
-            <option value="Temperature">Temperature</option>
-            <option value="Cool White">Cool White</option>
+            {targetOptions.map((option) => (
+              <option key={option.name} value={option.name}>
+                {option.name}
+              </option>
+            ))}
           </select>
+          <div className="mt-1 text-xs text-slate-500">
+            Current room: {profile}. Room-specific lamp channels: {roomLampSummary || "none"}.
+          </div>
+          {selectedTarget && selectedTargetRange && (
+            <div className="mt-1 text-xs text-slate-500">
+              Allowed CSV values for {selectedTarget.name}:{" "}
+              {formatRangeValue(selectedTargetRange.min, selectedTarget.unit)}-
+              {formatRangeValue(selectedTargetRange.max, selectedTarget.unit)}
+              {selectedTarget.isLamp ? " (room lamp channel)" : ""}.
+            </div>
+          )}
         </div>
+
         <div>
           <label className="block text-sm font-medium mb-1">
             Delimiter <span className="text-slate-500">(empty = auto)</span>
@@ -422,12 +589,13 @@ export default function CsvPhaseAnalyzer() {
             maxLength={1}
           />
         </div>
+
         <div className="md:col-span-2 flex items-center gap-4">
           <button
             onClick={onPickFileClick}
             className="ml-auto border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"
           >
-            Choose CSV…
+            Choose CSV...
           </button>
           <input
             ref={fileInputRef}
@@ -448,18 +616,15 @@ export default function CsvPhaseAnalyzer() {
         </div>
       ) : null}
 
-      {error ? (
-        <div className="text-sm text-red-600">Error: {error}</div>
-      ) : null}
+      {error ? <div className="text-sm text-red-600">Error: {error}</div> : null}
 
-      {/* Results */}
       {result && !("error" in result) ? (
         <>
           <div className="flex items-center gap-3">
             <button
               onClick={applyToProtocol}
               className="border rounded px-3 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-500"
-              title={`Replace phases for ${targetParam} in current protocol`}
+              title={`Replace phases for ${selectedTarget?.name ?? targetParam} in current protocol`}
             >
               Apply to Protocol
             </button>
@@ -478,14 +643,12 @@ export default function CsvPhaseAnalyzer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(result as any).phases.map((ph: Phase, i: number) => (
+                  {result.phases.map((ph: Phase, i: number) => (
                     <tr key={i} className="border-b">
                       <td className="py-1 pr-2">{i + 1}</td>
                       <td className="py-1 pr-2">{String(ph.value)}</td>
                       <td className="py-1 pr-2 text-right">{ph.duration_seconds}</td>
-                      <td className="py-1 pr-2 text-right">
-                        {formatHHMMSS(ph.duration_seconds)}
-                      </td>
+                      <td className="py-1 pr-2 text-right">{formatHHMMSS(ph.duration_seconds)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -495,9 +658,7 @@ export default function CsvPhaseAnalyzer() {
 
           <div className="border rounded p-3">
             <div className="font-medium mb-2">Points (HH:MM:SS, value)</div>
-            <div className="text-xs text-slate-600 mb-2">
-              Derived one-per-phase where duration &gt; 0.
-            </div>
+            <div className="text-xs text-slate-600 mb-2">Derived one-per-phase where duration &gt; 0.</div>
             <div className="overflow-auto">
               <table className="w-full text-sm border-collapse">
                 <thead>
@@ -508,7 +669,7 @@ export default function CsvPhaseAnalyzer() {
                   </tr>
                 </thead>
                 <tbody>
-                  {(result as any).points.map(([t, v]: [string, any], i: number) => (
+                  {result.points.map(([t, v]: [string, any], i: number) => (
                     <tr key={i} className="border-b">
                       <td className="py-1 pr-2">{i + 1}</td>
                       <td className="py-1 pr-2">{t}</td>
@@ -523,7 +684,6 @@ export default function CsvPhaseAnalyzer() {
       ) : rawText && result && "error" in result ? (
         <div className="text-sm text-red-600">Error: {result.error}</div>
       ) : null}
-
     </div>
   );
 }

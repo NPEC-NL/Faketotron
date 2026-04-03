@@ -13,12 +13,16 @@ const has = (s: string | undefined, sub: string) =>
 
 function colorFor(name: string): string {
   const n = (name || "").toLowerCase();
-  if (has(n, "cool white") || has(n, "cool-white")) return "#3BA7FF";
+  if (has(n, "cool white") || has(n, "cool-white")) return "#7aa6ff";
   if (has(n, "warm white") || has(n, "warm-white")) return "#FFB84D";
   if (has(n, "daylight")) return "#7DB3FF";
-  if (has(n, "far") && has(n, "red")) return "#B00020";
-  if (has(n, "red")) return "#E11D48";
-  if (has(n, "blue")) return "#2563EB";
+  if (has(n, "far") && has(n, "red")) return "#b1006b";
+  if (has(n, "deep") && has(n, "red")) return "#e03131";
+  if (has(n, "cyan")) return "#06b6d4";
+  if (has(n, "amber")) return "#f59e0b";
+  if (has(n, "green")) return "#22c55e";
+  if (has(n, "red")) return "#ef4444";
+  if (has(n, "blue")) return "#3b82f6";
   if (has(n, "uv")) return "#7C3AED";
   if (has(n, "co2") || has(n, "co₂")) return "#9CA3AF";
   if (has(n, "temperature") || has(n, "temp")) return "#F97316";
@@ -31,6 +35,7 @@ function colorFor(name: string): string {
 function dashFor(name: string): string | undefined {
   const n = (name || "").toLowerCase();
   if (has(n, "co2") || has(n, "co₂")) return "6 4";
+  if (has(n, "temperature") || has(n, "temp")) return "10 6";
   if (has(n, "hydro") || has(n, "irrigation") || has(n, "water")) return "3 3";
   if (has(n, "humidity") || has(n, "rh")) return "8 3 2 3";
   return undefined;
