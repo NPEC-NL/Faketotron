@@ -11,14 +11,17 @@ export function LeafButton(
       {...rest}
       style={{
         position: 'relative',
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '30px 66px',          // controls button size
-        minHeight: '100px',
+        display: 'inline-grid',
+        placeItems: 'center',
+        width: '196px',
+        minWidth: '196px',
+        height: '112px',
+        padding: '0 32px',
+        boxSizing: 'border-box',
         border: 'none',
         background: 'transparent',
         cursor: 'pointer',
+        textAlign: 'center',
         ...style,
       }}
     >
@@ -43,7 +46,16 @@ export function LeafButton(
         style={{
           position: 'relative',
           zIndex: 1,
-          whiteSpace: 'nowrap',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          width: '100%',
+          maxWidth: '118px',
+          minHeight: '2.6em',
+          lineHeight: 1.2,
+          textAlign: 'center',
+          whiteSpace: 'normal',
+          overflowWrap: 'break-word',
         }}
       >
         {children}

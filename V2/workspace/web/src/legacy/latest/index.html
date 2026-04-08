@@ -19,14 +19,20 @@
   .toolbar-row{width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
   .toolbar .btn:first-child {margin-right:180px;min-width:120px;}
   .toolbar-row .btn:first-child {margin-right:0px;min-width:120px;}
+  .toolbar-warning{margin-right:auto;display:none;align-items:center;padding:4px 8px;border:1px solid #d9a441;border-radius:4px;background:#fff4d6;color:#7a4b00;font-size:12px;line-height:1.3;max-width:420px}
   .btn{min-width:85px;height:28px;border:1px solid var(--b);background:linear-gradient(#fff,#e6e9ee);border-radius:4px;cursor:pointer}
   .btn.small{min-width:75px;height:24px}
+  .btn.tall{height:48px;line-height:1.1;padding:4px 10px}
   .btn:disabled{opacity:.5;cursor:not-allowed}
   .label{font-weight:600}
   .field{height:28px;min-width:140px;border:1px solid var(--bd);background:var(--field);border-radius:3px;text-align:center;line-height:28px;padding:0 8px}
   .group-tabs{height:30px;display:flex;align-items:center;gap:3px;padding:6px 8px;background:#f3f3f3;border-bottom:1px solid var(--b);flex-wrap:wrap}
   .gtab{padding:4px 8px;border:1px solid var(--b);border-radius:4px;background:#eee;font-size:12px;cursor:pointer}
   .gtab.active{background:#fff;border-color:var(--accent)}
+  .gtab.warn-yellow{background:#fff1b8;border-color:#d4a72c;color:#6b4e00}
+  .gtab.warn-red{background:#ffd9d6;border-color:#cf3f35;color:#7a1812}
+  .gtab.warn-yellow.active{background:#ffe79a}
+  .gtab.warn-red.active{background:#ffc1bc}
   .workspace{flex:1;background:#e6e6e6;margin:8px;border:1px solid var(--b);overflow:auto}
 
   .ph-list{background:#fff;border:1px solid var(--b)}
@@ -97,10 +103,11 @@
         <button class="btn" id="btnClearGroup" disabled>Clear Group</button>
         <button class="btn" id="btnAddPhase" disabled>Add Phase</button>
         <div class="toolbar-row">
-        <button class="btn small" id="btnCopyPhases" disabled>Copy phase(s)</button>
-        <button class="btn small" id="btnPastePhases" disabled>Paste phase(s)</button>
-        <button class="btn small" id="btnMoveSelUp" disabled>Move selected up</button>
-        <button class="btn small" id="btnMoveSelDown" disabled>Move selected down</button>
+        <div class="toolbar-warning" id="durationConsistencyWarning"></div>
+        <button class="btn small tall" id="btnCopyPhases" disabled>Copy<br>phase(s)</button>
+        <button class="btn small tall" id="btnPastePhases" disabled>Paste<br>phase(s)</button>
+        <button class="btn small tall" id="btnMoveSelUp" disabled>Move selected<br>up</button>
+        <button class="btn small tall" id="btnMoveSelDown" disabled>Move selected<br>down</button>
         </div>
       </div>
       <div id="groupTabs" class="group-tabs" style="display:none;"></div>
@@ -666,9 +673,13 @@ function refreshUI(){
 
 function renderTabs(){
   const bar=$('#groupTabs');bar.innerHTML='';
+  const durationState = getDurationConsistencyState();
   groups.forEach(g=>{
     const t=document.createElement('div');
     t.className='gtab'+(g.id===activeGroupId?' active':'');
+    const issue = durationState.issueByGroupId.get(g.id);
+    if(issue === 'yellow') t.className += ' warn-yellow';
+    if(issue === 'red') t.className += ' warn-red';
     t.textContent=g.name;
     t.onclick=()=>{activeGroupId=g.id;clearSelection();renderTabs();renderPhases();updateGroupDurationField();};
     bar.appendChild(t);
@@ -687,6 +698,54 @@ function updateOverallDuration(){
     return sec/3600;
   }));
   $('#duration').value = `${longestHours.toFixed(2)} hours`;
+  updateDurationConsistencyWarning();
+}
+function getDurationConsistencyState(){
+  const totalsByGroupId = new Map(groups.map(g => [g.id, g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0)]));
+  const totals = Array.from(totalsByGroupId.values());
+  const daySeconds = 24 * 3600;
+  const hasAtLeastOneFullDay = totals.some(sec => sec >= daySeconds);
+  const totalCounts = new Map();
+  totals.forEach(total => {
+    if(total > 0) totalCounts.set(total, (totalCounts.get(total) || 0) + 1);
+  });
+  let referenceTotal = 0;
+  let referenceCount = 0;
+  totalCounts.forEach((count, total) => {
+    if(count > referenceCount || (count === referenceCount && total > referenceTotal)){
+      referenceTotal = total;
+      referenceCount = count;
+    }
+  });
+  const issueByGroupId = new Map();
+
+  groups.forEach(g => {
+    const total = totalsByGroupId.get(g.id) || 0;
+    const isRed = hasAtLeastOneFullDay && total > 0 && total % daySeconds !== 0;
+    const isYellow = hasAtLeastOneFullDay && referenceCount > 1 && !isRed && total > 0 && total !== referenceTotal;
+    issueByGroupId.set(g.id, isRed ? 'red' : (isYellow ? 'yellow' : 'none'));
+  });
+
+  return {
+    hasAtLeastOneFullDay,
+    referenceTotal,
+    issueByGroupId,
+    hasYellow: Array.from(issueByGroupId.values()).includes('yellow'),
+    hasRed: Array.from(issueByGroupId.values()).includes('red'),
+  };
+}
+function updateDurationConsistencyWarning(){
+  const el = $('#durationConsistencyWarning');
+  if(!el) return;
+
+  const state = getDurationConsistencyState();
+  if(!state.hasAtLeastOneFullDay || (!state.hasYellow && !state.hasRed)){
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = 'In yellow are parameters which have a different time length, and in red are parameters not divisible by 24 hours.';
+  el.style.display = 'flex';
 }
 
 function summaryGrid(container, pairs){

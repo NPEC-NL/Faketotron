@@ -42,7 +42,7 @@ export default function Welcome() {
       </div>
 
       {/* Tab Navigation */}
-      <div className="flex justify-center border-b border-gray-200 mb-8">
+      <div className="flex flex-wrap justify-center gap-4 border-b border-gray-200 pb-4 mb-8">
         <TabButton tabKey="about" label="About & Credits" />
         <TabButton tabKey="tutorial" label="User Guide" />
         <TabButton tabKey="tabs" label="Tab Overview" />

@@ -14,7 +14,7 @@ import {
 
 import * as Store from "../state/store";
 import type { Protocol } from "../profiles";
-import { ROOM_CONFIGS, detectRoomFromFilename, type RoomConfig } from "../utils/rooms";
+import { detectRoomFromFilename, type RoomConfig } from "../utils/rooms";
 import { parseLampCalibrationCsv, safeNumber, spectrumAtPercent, toUmol, type SpectrumPoint } from "../utils/spectra";
 
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
@@ -42,6 +42,16 @@ type CoverageMode = "sparse" | "expanded";
 type SpectrumView = "target" | "reconstructed" | "both";
 type CityUnit = "energy" | "photon";
 type TemperatureMode = "constant" | "follow-light";
+type DataSourceKind = "cities" | "psi";
+
+const SPECTRUM_UNIT_LABEL = "μmol m⁻² s⁻¹ nm⁻¹";
+const SCHEDULE_UNIT_LABEL = "%";
+
+function formatAxisFloat(value: number): string {
+  if (!Number.isFinite(value)) return "";
+  const digits = value >= 10 ? 1 : 2;
+  return value.toFixed(digits);
+}
 
 type MonthOption = {
   value: number;
@@ -101,10 +111,17 @@ type ParsedCityRow = {
 
 type ParsedCityFile = {
   fileName: string;
+  sourceKind: DataSourceKind;
   sourceUnit: CityUnit;
   wavelengthsNm: number[];
   rows: ParsedCityRow[];
   cities: string[];
+  meta?: {
+    measurementDateLabel?: string;
+    rawMeasurementCount?: number;
+    keptMeasurementCount?: number;
+    duplicateColumnsRemoved?: number;
+  };
 };
 
 type TargetBin = {
@@ -155,6 +172,33 @@ function downloadText(name: string, text: string, mime = "text/csv;charset=utf-8
 function durationPoint(value: number): [string, number] {
   const clamped = Math.max(0, Math.min(100, Number.isFinite(value) ? value : 0));
   return ["00:05:00", Number(clamped.toFixed(4))];
+}
+
+function minutesToDurationString(minutes: number): string {
+  const totalSeconds = Math.max(1, Math.round((Number.isFinite(minutes) ? minutes : 0) * 60));
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const secs = totalSeconds % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function durationMinutesAtIndex(sortedBins: CalibrationBin[], index: number): number {
+  if (sortedBins.length <= 1) return 5;
+  if (index < sortedBins.length - 1) {
+    return sortedBins[index + 1].timeBinMinutes - sortedBins[index].timeBinMinutes;
+  }
+  return sortedBins[index].timeBinMinutes - sortedBins[index - 1].timeBinMinutes;
+}
+
+function binsToDurationPoints(bins: CalibrationBin[], channelKey: string): Array<[string, number]> {
+  if (bins.length === 0) return [];
+
+  const sorted = [...bins].sort((a, b) => a.timeBinMinutes - b.timeBinMinutes);
+  return sorted.map((bin, index) => {
+    const durationMinutes = durationMinutesAtIndex(sorted, index);
+    const clamped = Math.max(0, Math.min(100, Number(bin.lampPercentages[channelKey] ?? 0)));
+    return [minutesToDurationString(durationMinutes), Number(clamped.toFixed(4))];
+  });
 }
 
 function splitCsvLine(line: string, delimiter: string): string[] {
@@ -240,6 +284,44 @@ function cityUnitLabel(unit: CityUnit): string {
   return unit === "photon" ? "Photon: umol/(s*m2*nm)" : "Energy: W/(m2*nm)";
 }
 
+function parsePsiTimestamp(value: string): {
+  dateKey: string;
+  dateLabel: string;
+  timestampKey: string;
+  timeBinMinutes: number;
+  timeOfDay: string;
+} | null {
+  const match = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{2,4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(String(value ?? "").trim());
+  if (!match) return null;
+
+  const day = Number(match[1]);
+  const month = Number(match[2]);
+  const rawYear = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6] ?? "0");
+  const year = rawYear < 100 ? 2000 + rawYear : rawYear;
+
+  if (
+    !Number.isFinite(day) ||
+    !Number.isFinite(month) ||
+    !Number.isFinite(year) ||
+    !Number.isFinite(hour) ||
+    !Number.isFinite(minute) ||
+    !Number.isFinite(second)
+  ) {
+    return null;
+  }
+
+  return {
+    dateKey: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
+    dateLabel: `${String(day).padStart(2, "0")}/${String(month).padStart(2, "0")}/${String(year).padStart(4, "0")}`,
+    timestampKey: `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")} ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`,
+    timeBinMinutes: hour * 60 + minute + second / 60,
+    timeOfDay: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:${String(second).padStart(2, "0")}`,
+  };
+}
+
 function parseCityAverageDayCsv(text: string, fileName: string): ParsedCityFile {
   const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
   if (lines.length < 2) throw new Error("City CSV is empty.");
@@ -316,10 +398,104 @@ function parseCityAverageDayCsv(text: string, fileName: string): ParsedCityFile 
 
   return {
     fileName,
+    sourceKind: "cities",
     sourceUnit: unit,
     wavelengthsNm: spectralColumns.map((entry) => entry.nm),
     rows,
     cities: Array.from(new Set(rows.map((row) => row.locationName))).sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function parsePsiPhotonFluxCsv(text: string, fileName: string): ParsedCityFile {
+  const lines = text.split(/\r?\n/).filter((line) => line.trim().length > 0);
+  if (lines.length < 7) {
+    throw new Error("PSI PhotonFluxDensity.csv is too short to contain timestamps and spectra.");
+  }
+
+  const splitTabLine = (line: string) => splitCsvLine(line, "\t").map((cell) => cell.trim());
+  const timeLineIndex = lines.findIndex((line) => splitTabLine(line)[0]?.toLowerCase() === "time");
+  if (timeLineIndex < 0) {
+    throw new Error("PSI PhotonFluxDensity.csv is missing the 'Time' row.");
+  }
+
+  const wavelengthHeaderIndex = lines.findIndex((line, index) => index > timeLineIndex && splitTabLine(line)[0]?.toLowerCase() === "[nm]");
+  if (wavelengthHeaderIndex < 0) {
+    throw new Error("PSI PhotonFluxDensity.csv is missing the '[nm]' row.");
+  }
+
+  const timeCells = splitTabLine(lines[timeLineIndex]);
+  const uniqueColumns: Array<{
+    columnIndex: number;
+    dateKey: string;
+    dateLabel: string;
+    timestampKey: string;
+    timeBinMinutes: number;
+    timeOfDay: string;
+  }> = [];
+  const seenTimestamps = new Set<string>();
+  const measurementDates = new Set<string>();
+  let duplicateColumnsRemoved = 0;
+
+  for (let columnIndex = 1; columnIndex < timeCells.length; columnIndex += 1) {
+    const parsed = parsePsiTimestamp(timeCells[columnIndex]);
+    if (!parsed) continue;
+    measurementDates.add(parsed.dateKey);
+    if (seenTimestamps.has(parsed.timestampKey)) {
+      duplicateColumnsRemoved += 1;
+      continue;
+    }
+    seenTimestamps.add(parsed.timestampKey);
+    uniqueColumns.push({ columnIndex, ...parsed });
+  }
+
+  if (uniqueColumns.length === 0) {
+    throw new Error("No usable timestamps were found in the PSI PhotonFluxDensity.csv file.");
+  }
+  if (measurementDates.size > 1) {
+    throw new Error("PSI PhotonFluxDensity.csv must contain measurements from a single date.");
+  }
+
+  const spectralRows: Array<{ nm: number; values: number[] }> = [];
+  for (const line of lines.slice(wavelengthHeaderIndex + 1)) {
+    const cells = splitTabLine(line);
+    const nm = safeNumber(cells[0]);
+    if (!Number.isFinite(nm) || nm <= 0) continue;
+    spectralRows.push({
+      nm,
+      values: uniqueColumns.map(({ columnIndex }) => safeNumber(cells[columnIndex])),
+    });
+  }
+
+  if (spectralRows.length === 0) {
+    throw new Error("No spectral wavelength rows were found in the PSI PhotonFluxDensity.csv file.");
+  }
+
+  const measurementDateLabel = uniqueColumns[0]?.dateLabel ?? "";
+  const rows: ParsedCityRow[] = uniqueColumns.map((column, measurementIndex) => ({
+    locationName: "PSI spectrometer",
+    locationCode: "PSI",
+    month: 1,
+    monthName: measurementDateLabel || "Measurement day",
+    timeBinMinutes: column.timeBinMinutes,
+    timeOfDay: column.timeOfDay,
+    samplesAveraged: null,
+    filters: { ...DEFAULT_FILTERS },
+    spectrum: spectralRows.map((row) => row.values[measurementIndex] ?? 0),
+  }));
+
+  return {
+    fileName,
+    sourceKind: "psi",
+    sourceUnit: "photon",
+    wavelengthsNm: spectralRows.map((row) => row.nm),
+    rows,
+    cities: ["PSI spectrometer"],
+    meta: {
+      measurementDateLabel,
+      rawMeasurementCount: timeCells.length - 1,
+      keptMeasurementCount: uniqueColumns.length,
+      duplicateColumnsRemoved,
+    },
   };
 }
 
@@ -381,8 +557,7 @@ function bestValidSlice(rows: ParsedCityRow[]): Record<Exclude<FilterKey, "measu
 
 function resolveRecommendedSelection(rows: ParsedCityRow[]): Record<FilterKey, string> {
   const availableTables = distinctValues(rows, "measurement_table");
-  const tableCandidates = Array.from(new Set([...PREFERRED_MEASUREMENT_TABLES, ...availableTables])).filter(Boolean);
-  if (tableCandidates.length === 0) {
+  if (availableTables.length === 0) {
     const best = bestValidSlice(rows);
     return {
       measurement_table: "",
@@ -393,6 +568,8 @@ function resolveRecommendedSelection(rows: ParsedCityRow[]): Record<FilterKey, s
       patch_azimuth: best.patch_azimuth || "",
     };
   }
+
+  const tableCandidates = Array.from(new Set([...PREFERRED_MEASUREMENT_TABLES, ...availableTables])).filter(Boolean);
 
   for (const table of tableCandidates) {
     const working = applyFilter(rows, "measurement_table", table);
@@ -557,6 +734,73 @@ function expandTargetBins(rows: ParsedCityRow[]): TargetBin[] {
         };
       }
     }
+  }
+
+  return expanded;
+}
+
+function rowsToTargetBins(rows: ParsedCityRow[]): TargetBin[] {
+  return rows.map((row) => ({
+    timeBinMinutes: row.timeBinMinutes,
+    timeOfDay: row.timeOfDay,
+    samplesAveraged: row.samplesAveraged,
+    wasFilled: false,
+    targetSpectrum: [...row.spectrum],
+  }));
+}
+
+function cloneCalibrationBin(bin: CalibrationBin): CalibrationBin {
+  return {
+    ...bin,
+    targetSpectrum: [...bin.targetSpectrum],
+    reconstructedSpectrum: [...bin.reconstructedSpectrum],
+    lampPercentages: { ...bin.lampPercentages },
+    fit: { ...bin.fit },
+  };
+}
+
+function zeroCalibrationBin(minute: number, template: CalibrationBin): CalibrationBin {
+  return {
+    timeBinMinutes: minute,
+    timeOfDay: formatTimeOfDay(minute),
+    samplesAveraged: null,
+    wasFilled: true,
+    targetSpectrum: new Array(template.targetSpectrum.length).fill(0),
+    reconstructedSpectrum: new Array(template.reconstructedSpectrum.length).fill(0),
+    lampPercentages: Object.fromEntries(Object.keys(template.lampPercentages).map((key) => [key, 0])),
+    fit: {
+      rmse: null,
+      mae: null,
+      success: true,
+      nfev: null,
+      targetIntegral: 0,
+      reconstructedIntegral: 0,
+    },
+  };
+}
+
+function expandPsiCalibrationBins(sparseBins: CalibrationBin[]): CalibrationBin[] {
+  if (sparseBins.length === 0) return [];
+
+  const sorted = [...sparseBins].sort((a, b) => a.timeBinMinutes - b.timeBinMinutes);
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const expanded: CalibrationBin[] = [];
+  let cursor = 0;
+
+  for (let minute = 0; minute < 24 * 60; minute += 5) {
+    if (minute < first.timeBinMinutes || minute > last.timeBinMinutes) {
+      expanded.push(zeroCalibrationBin(minute, first));
+      continue;
+    }
+
+    while (cursor + 1 < sorted.length && sorted[cursor + 1].timeBinMinutes <= minute) cursor += 1;
+    const base = cloneCalibrationBin(sorted[cursor]);
+    base.timeBinMinutes = minute;
+    base.timeOfDay = formatTimeOfDay(minute);
+    base.samplesAveraged = null;
+    base.wasFilled = minute !== sorted[cursor].timeBinMinutes;
+    expanded.push(base);
   }
 
   return expanded;
@@ -779,7 +1023,8 @@ function buildTemperatureFollowPoints(
     return [["24:00:00", Math.round(avgTempC * 10)]];
   }
 
-  const normalizedLight = bins.map((bin) => {
+  const sortedBins = [...bins].sort((a, b) => a.timeBinMinutes - b.timeBinMinutes);
+  const normalizedLight = sortedBins.map((bin) => {
     const meanPercent =
       room.channels.reduce((sum, channel) => sum + (bin.lampPercentages[channel.key] ?? 0), 0) / room.channels.length;
     return meanPercent / 100;
@@ -792,10 +1037,10 @@ function buildTemperatureFollowPoints(
   const dropScale = maxDrop > 0 ? (avgTempC - minTempC) / maxDrop : Number.POSITIVE_INFINITY;
   const scale = Math.max(0, Math.min(riseScale, dropScale));
 
-  return normalizedLight.map((value) => {
+  return normalizedLight.map((value, index) => {
     const nextTemp = avgTempC + scale * (value - meanLight);
     const clamped = Math.max(minTempC, Math.min(maxTempC, nextTemp));
-    return ["00:05:00", Math.round(clamped * 10)] as [string, number];
+    return [minutesToDurationString(durationMinutesAtIndex(sortedBins, index)), Math.round(clamped * 10)] as [string, number];
   });
 }
 
@@ -803,13 +1048,11 @@ export default function CitiesTab() {
   const protocol = useProto((s: any) => s.protocol) as Protocol;
   const setProtocol = useProto((s: any) => s.setProtocol);
 
-  const rooms = useMemo(() => Object.values(ROOM_CONFIGS), []);
-
+  const [dataSource, setDataSource] = useState<DataSourceKind>("cities");
   const [cityFile, setCityFile] = useState<File | null>(null);
   const [cityData, setCityData] = useState<ParsedCityFile | null>(null);
   const [parsingCityFile, setParsingCityFile] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
-  const [selectedRoom, setSelectedRoom] = useState("G7");
   const [coverageMode, setCoverageMode] = useState<CoverageMode>("expanded");
   const [spectrumView, setSpectrumView] = useState<SpectrumView>("both");
   const [nmMinInput, setNmMinInput] = useState("400");
@@ -829,7 +1072,10 @@ export default function CitiesTab() {
   const [temperatureDayMax, setTemperatureDayMax] = useState("20");
   const [temperatureAverage, setTemperatureAverage] = useState("13");
 
-  const activeRoom = ROOM_CONFIGS[selectedRoom] ?? rooms[0];
+  const activeRoom = useMemo(() => {
+    if (!calibrationFile) return null;
+    return detectRoomFromFilename(calibrationFile.name);
+  }, [calibrationFile]);
   const protocolParts = protocol?.sections?.[0]?.parts ?? [];
   const uvGroupName = useMemo(() => {
     if (findPartIndex(protocolParts, ["UVB"]) >= 0) return "UVB";
@@ -844,9 +1090,21 @@ export default function CitiesTab() {
 
   const citySummary = useMemo(() => {
     if (!cityData) return "";
+    if (cityData.sourceKind === "psi") return `Loaded source: PSI spectrometer`;
     if (cityData.cities.length === 1) return `Loaded city: ${cityData.cities[0]}`;
     return `Loaded cities: ${cityData.cities.join(", ")}`;
   }, [cityData]);
+
+  useEffect(() => {
+    setCityFile(null);
+    setCityData(null);
+    setSelectedMonth(null);
+    setResult(null);
+    setTimeIndex(0);
+    setIsPlaying(false);
+    setParsingCityFile(false);
+    setError("");
+  }, [dataSource]);
 
   useEffect(() => {
     if (!cityFile) {
@@ -870,10 +1128,10 @@ export default function CitiesTab() {
       .text()
       .then((text) => {
         if (cancelled) return;
-        const parsed = parseCityAverageDayCsv(text, cityFile.name);
+        const parsed = dataSource === "cities" ? parseCityAverageDayCsv(text, cityFile.name) : parsePsiPhotonFluxCsv(text, cityFile.name);
         setCityData(parsed);
         setSelectedMonth(null);
-        if (parsed.cities.length > 1) {
+        if (parsed.sourceKind === "cities" && parsed.cities.length > 1) {
           setError(`This city CSV contains multiple cities: ${parsed.cities.join(", ")}. Upload a per-city CSV.`);
         } else {
           setError("");
@@ -894,7 +1152,7 @@ export default function CitiesTab() {
     return () => {
       cancelled = true;
     };
-  }, [cityFile]);
+  }, [cityFile, dataSource]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -931,14 +1189,14 @@ export default function CitiesTab() {
     setResult(null);
     setTimeIndex(0);
     setIsPlaying(false);
-  }, [cityData?.fileName, selectedMonth, selectedRoom, calibrationFile?.name, nmMinInput, nmMaxInput]);
+  }, [cityData?.fileName, selectedMonth, calibrationFile?.name, nmMinInput, nmMaxInput]);
 
   async function runCalibration() {
     if (!cityData) {
-      setError("Upload a city average-day CSV first.");
+      setError(dataSource === "cities" ? "Upload a city average-day CSV first." : "Upload PhotonFluxDensity.csv first.");
       return;
     }
-    if (cityData.cities.length !== 1) {
+    if (cityData.sourceKind === "cities" && cityData.cities.length !== 1) {
       setError(`This city CSV contains multiple cities: ${cityData.cities.join(", ")}. Upload a per-city CSV.`);
       return;
     }
@@ -947,7 +1205,11 @@ export default function CitiesTab() {
       return;
     }
     if (!calibrationFile) {
-      setError("Upload the lamp calibration CSV for the selected room.");
+      setError("Upload the lamp calibration CSV first.");
+      return;
+    }
+    if (!activeRoom) {
+      setError("Could not detect the room from the calibration filename. Include G4-G8 or the room number in the filename.");
       return;
     }
 
@@ -955,12 +1217,6 @@ export default function CitiesTab() {
     const nmMax = Number(nmMaxInput);
     if (!Number.isFinite(nmMin) || !Number.isFinite(nmMax) || nmMin >= nmMax) {
       setError("Enter a valid nm range where the minimum is smaller than the maximum.");
-      return;
-    }
-
-    const detectedRoom = detectRoomFromFilename(calibrationFile.name);
-    if (detectedRoom && detectedRoom.id !== activeRoom.id) {
-      setError(`Calibration file looks like ${detectedRoom.id}, but room ${activeRoom.id} is selected.`);
       return;
     }
 
@@ -979,21 +1235,29 @@ export default function CitiesTab() {
 
       const { indices, wavelengthsNm } = filterWavelengthWindow(cityData.wavelengthsNm, nmMin, nmMax);
       const uniqueRows = projectRowsToWavelengthWindow(ensureUniqueBins(filteredRows), indices);
-      const expandedTargets = expandTargetBins(uniqueRows);
       const calibrationText = await calibrationFile.text();
       const lookup = buildCalibrationLookup(calibrationText, activeRoom, wavelengthsNm);
-      const expandedBins = fitExpandedBins(expandedTargets, wavelengthsNm, activeRoom, lookup);
-      const sparseLookup = new Map(expandedBins.map((bin) => [bin.timeBinMinutes, bin]));
-      const sparseBins = uniqueRows.map((row) => {
-        const bin = sparseLookup.get(row.timeBinMinutes);
-        if (!bin) throw new Error(`Missing reconstructed result for ${row.timeOfDay}.`);
-        return {
-          ...bin,
-          samplesAveraged: row.samplesAveraged,
-          wasFilled: false,
-          targetSpectrum: [...row.spectrum],
-        };
-      });
+      let expandedBins: CalibrationBin[];
+      let sparseBins: CalibrationBin[];
+
+      if (cityData.sourceKind === "psi") {
+        sparseBins = fitExpandedBins(rowsToTargetBins(uniqueRows), wavelengthsNm, activeRoom, lookup);
+        expandedBins = expandPsiCalibrationBins(sparseBins);
+      } else {
+        const expandedTargets = expandTargetBins(uniqueRows);
+        expandedBins = fitExpandedBins(expandedTargets, wavelengthsNm, activeRoom, lookup);
+        const sparseLookup = new Map(expandedBins.map((bin) => [bin.timeBinMinutes, bin]));
+        sparseBins = uniqueRows.map((row) => {
+          const bin = sparseLookup.get(row.timeBinMinutes);
+          if (!bin) throw new Error(`Missing reconstructed result for ${row.timeOfDay}.`);
+          return {
+            ...bin,
+            samplesAveraged: row.samplesAveraged,
+            wasFilled: false,
+            targetSpectrum: [...row.spectrum],
+          };
+        });
+      }
 
       setResult({
         coverageMode,
@@ -1085,6 +1349,22 @@ export default function CitiesTab() {
     return buildScheduleTicks(bins, viewportWidth >= 1024 ? 60 : 120);
   }, [coverageMode, result, viewportWidth]);
 
+  const spectrumYAxisMax = useMemo(() => {
+    if (!result) return 1;
+
+    let maxValue = 0;
+    for (const bin of [...result.sparseBins, ...result.expandedBins]) {
+      for (const value of bin.targetSpectrum) {
+        if (Number.isFinite(value)) maxValue = Math.max(maxValue, value);
+      }
+      for (const value of bin.reconstructedSpectrum) {
+        if (Number.isFinite(value)) maxValue = Math.max(maxValue, value);
+      }
+    }
+
+    return Math.max(0.01, Number((maxValue * 1.05).toFixed(6)));
+  }, [result]);
+
   const selectionSummary = useMemo(() => {
     if (!result) return "";
     return FILTER_KEYS
@@ -1095,6 +1375,12 @@ export default function CitiesTab() {
       .filter(Boolean)
       .join(" | ");
   }, [result]);
+
+  const primaryFileLabel = dataSource === "cities" ? "City average-day CSV" : "PhotonFluxDensity.csv";
+  const primaryFileEmptyLabel = dataSource === "cities" ? "No city CSV selected." : "No PhotonFluxDensity.csv selected.";
+  const primaryFilePrompt = dataSource === "cities" ? "Upload one city CSV first" : "Upload PhotonFluxDensity.csv first";
+  const monthFieldLabel = dataSource === "cities" ? "Month" : "Measurement date";
+  const psiSummary = cityData?.sourceKind === "psi" ? cityData.meta : null;
 
   function togglePlayback() {
     if (visibleBins.length === 0) return;
@@ -1129,7 +1415,7 @@ export default function CitiesTab() {
     const avgTempC = Number(temperatureAverage);
     const uvValue = 0;
 
-    const minAllowedTemp = activeRoom.id === "G7" ? -4 : 4;
+    const minAllowedTemp = result.room.id === "G7" ? -4 : 4;
     if (!Number.isFinite(co2Value) || co2Value < 0 || co2Value > 1000) {
       setError("CO2 must be a number between 0 and 1000 ppm.");
       return;
@@ -1140,7 +1426,7 @@ export default function CitiesTab() {
     }
     if (temperatureMode === "constant") {
       if (!Number.isFinite(constantTempC) || constantTempC < minAllowedTemp || constantTempC > 42) {
-        setError(`Constant temperature must be between ${minAllowedTemp} and 42 °C for ${activeRoom.id}.`);
+        setError(`Constant temperature must be between ${minAllowedTemp} and 42 °C for ${result.room.id}.`);
         return;
       }
     } else {
@@ -1155,7 +1441,7 @@ export default function CitiesTab() {
         avgTempC > dayMaxC
       ) {
         setError(
-          `Follow-light temperature needs valid bounds for ${activeRoom.id}: min ${minAllowedTemp}-42 °C, max ${minAllowedTemp}-42 °C, and average between them.`,
+          `Follow-light temperature needs valid bounds for ${result.room.id}: min ${minAllowedTemp}-42 °C, max ${minAllowedTemp}-42 °C, and average between them.`,
         );
         return;
       }
@@ -1192,7 +1478,10 @@ export default function CitiesTab() {
 
     for (const channel of result.room.channels) {
       const groupIndex = findPartIndex(parts, [channel.protocolGroupName]);
-      const points = result.expandedBins.map((bin) => durationPoint(bin.lampPercentages[channel.key] ?? 0));
+      const points =
+        cityData?.sourceKind === "psi"
+          ? binsToDurationPoints(result.expandedBins, channel.key)
+          : result.expandedBins.map((bin) => durationPoint(bin.lampPercentages[channel.key] ?? 0));
       parts[groupIndex] = {
         ...parts[groupIndex],
         "group-name": parts[groupIndex]?.["group-name"] ?? parts[groupIndex]?.name ?? channel.protocolGroupName,
@@ -1246,21 +1535,30 @@ export default function CitiesTab() {
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700 space-y-2">
         <h3 className="text-lg font-semibold text-emerald-900">Cities Calibration</h3>
         <p>
-          THIS IS STILL UNDER CONSTRUCTION! Upload one city average-day CSV and one room calibration CSV to fit a Faketron day profile.
+          THIS IS STILL UNDER CONSTRUCTION! Choose either <strong>Cities</strong> or <strong>PSI spectrometer</strong>,
+          then upload that source file together with one room calibration CSV to fit a Faketron day profile.
         </p>
+        {dataSource === "cities" ? (
+          <p>
+            The city CSV represents one average 24-hour day for a single city, split into 5-minute bins, for the
+            month that you select here. When available, the tool automatically uses the
+            <code className="mx-1">spectral_horizontal_irradiance</code>
+            slice from that monthly average-day file.
+          </p>
+        ) : (
+          <p>
+            The PSI mode expects a <code className="mx-1">PhotonFluxDensity.csv</code> export. Measurement timestamps,
+            start and end times, the interval between measurements, and the number of measurements may vary freely.
+            When duplicate timestamps appear, only the first measurement is kept and later duplicates are ignored.
+          </p>
+        )}
         <p>
-          The city CSV represents one average 24-hour day for a single city, split into 5-minute bins, for the
-          month that you select here. When available, the tool automatically uses the
-          <code className="mx-1">spectral_horizontal_irradiance</code>
-          slice from that monthly average-day file.
-        </p>
-        <p>
-          The workflow is: first the outdoor daylight spectrum is taken from the city dataset for each 5-minute time
-          bin of the selected average day, then that spectrum is compared against the measured lamp spectra of the
-          selected room. The lamp calibration CSV contains Jeti measurements of each lamp channel at known dimming
-          percentages. The tool interpolates between those measurements, reconstructs possible lamp spectra for
-          0-100%, and then fits the combination of indoor lamps that best matches the outside spectral target at each
-          time bin.
+          The workflow is: first the outdoor daylight spectrum is taken from the
+          {dataSource === "cities" ? " city dataset" : " PSI file"} for each time bin, then that spectrum is compared
+          against the measured lamp spectra of the detected room. The lamp calibration CSV contains Jeti measurements
+          of each lamp channel at known dimming percentages. The tool interpolates between those measurements,
+          reconstructs possible lamp spectra for 0-100%, and then fits the combination of indoor lamps that best
+          matches the outside spectral target at each time bin.
         </p>
         <p>
           In practice this means the outside measurement is the spectral target, and the room calibration tells the
@@ -1300,26 +1598,45 @@ export default function CitiesTab() {
           <h4 className="font-semibold text-slate-900">1. Data Selection</h4>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">City average-day CSV</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Source</label>
+            <select
+              className="w-full rounded border border-slate-300 p-2 text-sm"
+              value={dataSource}
+              onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setDataSource(event.target.value as DataSourceKind)}
+            >
+              <option value="cities">Cities</option>
+              <option value="psi">PSI spectrometer</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{primaryFileLabel}</label>
             <input
               type="file"
               accept=".csv,text/csv,text/plain"
               onChange={(event: React.ChangeEvent<HTMLInputElement>) => setCityFile(event.target.files?.[0] ?? null)}
               className="block w-full text-sm"
             />
-            <div className="mt-2 text-xs text-slate-500">{cityFile ? cityFile.name : "No city CSV selected."}</div>
-            <a
-              href={CITY_CSV_DOWNLOAD_URL}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-2 inline-block text-xs text-emerald-700 underline"
-            >
-              Download the city CSV files
-            </a>
+            <div className="mt-2 text-xs text-slate-500">{cityFile ? cityFile.name : primaryFileEmptyLabel}</div>
+            {dataSource === "cities" ? (
+              <a
+                href={CITY_CSV_DOWNLOAD_URL}
+                target="_blank"
+                rel="noreferrer"
+                className="mt-2 inline-block text-xs text-emerald-700 underline"
+              >
+                Download the city CSV files
+              </a>
+            ) : (
+              <div className="mt-2 text-xs text-slate-500">
+                Upload the PSI-exported <code>PhotonFluxDensity.csv</code> file. Duplicate timestamps are removed by
+                keeping the first measurement only.
+              </div>
+            )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Month</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">{monthFieldLabel}</label>
             <select
               className="w-full rounded border border-slate-300 p-2 text-sm"
               value={selectedMonth ?? ""}
@@ -1333,23 +1650,8 @@ export default function CitiesTab() {
                   </option>
                 ))
               ) : (
-                <option value="">{cityData?.cities.length === 1 ? "Choose a month" : "Upload one city CSV first"}</option>
+                <option value="">{cityData?.cities.length === 1 ? `Choose a ${dataSource === "cities" ? "month" : "measurement day"}` : primaryFilePrompt}</option>
               )}
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Room</label>
-            <select
-              className="w-full rounded border border-slate-300 p-2 text-sm"
-              value={selectedRoom}
-              onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setSelectedRoom(event.target.value)}
-            >
-              {rooms.map((room) => (
-                <option key={room.id} value={room.id}>
-                  {room.id}
-                </option>
-              ))}
             </select>
           </div>
 
@@ -1362,6 +1664,13 @@ export default function CitiesTab() {
               className="block w-full text-sm"
             />
             <div className="mt-2 text-xs text-slate-500">{calibrationFile ? calibrationFile.name : "No calibration CSV selected."}</div>
+            {calibrationFile ? (
+              <div className={`mt-1 text-xs ${activeRoom ? "text-slate-500" : "text-amber-700"}`}>
+                {activeRoom
+                  ? `Detected room from calibration filename: ${activeRoom.id}`
+                  : "Could not detect a room from the calibration filename. Include G4-G8 or the room number in the filename."}
+              </div>
+            ) : null}
             <a
               href="https://drive.google.com/drive/folders/16m5sowew9blQqUsE5MWhW0qihLIMHwJz?usp=sharing"
               target="_blank"
@@ -1386,6 +1695,14 @@ export default function CitiesTab() {
               <div>{citySummary}</div>
               <div className="mt-1">Detected file unit: {cityUnitLabel(cityData.sourceUnit)}</div>
               <div className="mt-1">Loaded {cityData.rows.length} rows and {cityData.wavelengthsNm.length} wavelengths.</div>
+              {psiSummary?.measurementDateLabel ? (
+                <div className="mt-1">Measurement date: {psiSummary.measurementDateLabel}</div>
+              ) : null}
+              {psiSummary?.keptMeasurementCount != null ? (
+                <div className="mt-1">
+                  Kept {psiSummary.keptMeasurementCount} unique timestamps and ignored {psiSummary.duplicateColumnsRemoved ?? 0} duplicate timestamp columns.
+                </div>
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -1405,7 +1722,8 @@ export default function CitiesTab() {
                 <option value="sparse">Sparse observed bins</option>
               </select>
               <div className="mt-1 text-xs text-slate-500">
-                Sparse shows only the measured bins from the uploaded city CSV. Expanded 24h fills the full day and is used for preview, export, and apply.
+                Sparse shows only the measured bins from the uploaded {dataSource === "cities" ? "city CSV" : "PSI file"}.
+                Expanded 24h fills the full day and is used for preview, export, and apply.
               </div>
             </div>
 
@@ -1421,7 +1739,7 @@ export default function CitiesTab() {
                 <option value="reconstructed">Reconstructed spectrum</option>
               </select>
               <div className="mt-1 text-xs text-slate-500">
-                Choose whether the spectral chart shows the city target, the reconstructed Faketron fit, or both together.
+                Choose whether the spectral chart shows the source target, the reconstructed Faketron fit, or both together.
               </div>
             </div>
           </div>
@@ -1455,7 +1773,9 @@ export default function CitiesTab() {
           {scopedRows.length > 0 && selectedMonth != null ? (
             <div className="text-xs text-slate-500">
               {scopedRows.length} rows are available for {loadedCityName} {monthOptions.find((option) => option.value === selectedMonth)?.label ?? ""}.
-              This is the selected month-long average day, and the measurement slice is auto-selected behind the scenes.
+              {dataSource === "cities"
+                ? " This is the selected month-long average day, and the measurement slice is auto-selected behind the scenes."
+                : " These are the unique PSI measurement timestamps kept from the uploaded PhotonFluxDensity.csv file."}
             </div>
           ) : null}
         </div>
@@ -1492,25 +1812,43 @@ export default function CitiesTab() {
             </div>
 
             {currentBin ? (
-              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
-                <div className="rounded border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700 space-y-1">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-[116px_minmax(0,1fr)]">
+                <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 space-y-1 self-start">
                   <div><strong>Time:</strong> {currentBin.timeOfDay}</div>
                   <div><strong>RMSE:</strong> {currentBin.fit.rmse?.toFixed(4) ?? "-"}</div>
                 </div>
 
-                <div className="xl:col-span-3">
+                <div className="min-w-0">
+                  <div className="mb-1 text-xs text-slate-500">Unit: {SPECTRUM_UNIT_LABEL}</div>
                   <ResponsiveContainer width="100%" height={320}>
-                    <LineChart data={spectrumData}>
+                    <LineChart data={spectrumData} margin={{ top: 8, right: 16, bottom: 20, left: 12 }}>
                       <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="nm" type="number" domain={["dataMin", "dataMax"]} tickCount={10} />
-                      <YAxis />
-                      <Tooltip />
+                      <XAxis
+                        dataKey="nm"
+                        type="number"
+                        domain={["dataMin", "dataMax"]}
+                        tickCount={10}
+                        label={{ value: "Wavelength (nm)", position: "insideBottom", offset: -6 }}
+                      />
+                      <YAxis
+                        domain={[0, spectrumYAxisMax]}
+                        width={72}
+                        tickFormatter={(value: number) => formatAxisFloat(Number(value))}
+                        label={{ value: SPECTRUM_UNIT_LABEL, angle: -90, position: "insideLeft" }}
+                      />
+                      <Tooltip
+                        labelFormatter={(value) => `${value} nm`}
+                        formatter={(value: number | string | Array<number | string>, name: string) => {
+                          const numericValue = Array.isArray(value) ? value[0] : value;
+                          return [`${formatAxisFloat(Number(numericValue))} ${SPECTRUM_UNIT_LABEL}`, name];
+                        }}
+                      />
                       <Legend />
                       {spectrumView !== "reconstructed" ? (
-                        <Line type="linear" dataKey="target" stroke="#0f766e" dot={false} strokeWidth={2} name="Target" />
+                        <Line type="linear" dataKey="target" stroke="#0f766e" dot={false} strokeWidth={2} name="Target spectrum" />
                       ) : null}
                       {spectrumView !== "target" ? (
-                        <Line type="linear" dataKey="reconstructed" stroke="#dc2626" dot={false} strokeWidth={2} name="Reconstructed" />
+                        <Line type="linear" dataKey="reconstructed" stroke="#dc2626" dot={false} strokeWidth={2} name="Reconstructed spectrum" />
                       ) : null}
                     </LineChart>
                   </ResponsiveContainer>
@@ -1544,9 +1882,24 @@ export default function CitiesTab() {
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={scheduleData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="time" ticks={scheduleTicks} interval={0} tick={{ fontSize: 11 }} minTickGap={0} />
-                <YAxis domain={[0, 100]} />
-                <Tooltip />
+                <XAxis
+                  dataKey="time"
+                  ticks={scheduleTicks}
+                  interval={0}
+                  tick={{ fontSize: 11 }}
+                  minTickGap={0}
+                  label={{ value: "Time of day", position: "insideBottom", offset: -6 }}
+                />
+                <YAxis
+                  domain={[0, 100]}
+                  label={{ value: `Lamp output (${SCHEDULE_UNIT_LABEL})`, angle: -90, position: "insideLeft" }}
+                />
+                <Tooltip
+                  formatter={(value: number | string | Array<number | string>, name: string) => {
+                    const numericValue = Array.isArray(value) ? value[0] : value;
+                    return [`${Number(numericValue).toFixed(2)} ${SCHEDULE_UNIT_LABEL}`, name];
+                  }}
+                />
                 <Legend />
                 {result.room.channels.map((channel) => (
                   <Bar
@@ -1561,8 +1914,12 @@ export default function CitiesTab() {
             </ResponsiveContainer>
             <div className="text-xs text-slate-500">
               {coverageMode === "expanded"
-                ? "Expanded mode includes the 15-minute linear ramp-in and ramp-out at the day edges."
-                : "Sparse mode shows only the originally observed city measurement bins."}
+                ? cityData?.sourceKind === "psi"
+                  ? "PSI expanded mode uses 5-minute bins, keeps each fitted value constant until the next PSI timestamp, and sets values to 0 before the first and after the last measurement."
+                  : "Expanded mode includes the 15-minute linear ramp-in and ramp-out at the day edges."
+                : cityData?.sourceKind === "psi"
+                  ? "Sparse mode shows only the original PSI measurement timestamps."
+                  : "Sparse mode shows only the originally observed city measurement bins."}
             </div>
           </div>
 

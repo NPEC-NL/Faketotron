@@ -55,7 +55,7 @@ export default function App() {
 
   return (
     <div className="wrap">
-      <div style={{ display: "flex", gap: 8, padding: 8, marginBottom: 12 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "center", alignItems: "center", gap: 16, padding: 8, marginBottom: 12 }}>
         {TabBtn("welcome", "Welcome")}
         {TabBtn("editor", "Editor")}
         {TabBtn("graph", "Graph")}
@@ -63,7 +63,7 @@ export default function App() {
         {TabBtn("cities", "Cities")}
         {TabBtn("csv", "Time-Series CSV")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
-          <div className="flex items-center gap-3 pl-3 border-l border-slate-300 ml-auto">
+          <div className="flex items-center gap-3 pl-4 border-l border-slate-300">
             <img src={npecLogo} alt="NPEC logo" className="h-24 w-auto" />
             <span className="font-semibold text-slate-700 text-2xl tracking-wide">NPEC Faketron</span>
           </div>

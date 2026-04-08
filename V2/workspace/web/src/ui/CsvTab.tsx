@@ -27,6 +27,7 @@ type AnalyzeOptions = {
 };
 
 type Phase = { value: any; duration_seconds: number };
+type ImportMode = "single" | "combined";
 
 type CsvTargetOption = {
   name: string;
@@ -34,6 +35,18 @@ type CsvTargetOption = {
   rangeKey: string;
   isLamp: boolean;
 };
+
+type ParsedEntry = {
+  target: CsvTargetOption;
+  header: string;
+  phases: Phase[];
+  points: [string, any][];
+  out: { phases: Array<{ type: "csv-import"; points: [string, any][] }> };
+};
+
+type ParseResult =
+  | { kind: "single"; phases: Phase[]; points: [string, any][]; out: { phases: Array<{ type: "csv-import"; points: [string, any][] }> } }
+  | { kind: "combined"; secondsHeader: string; entries: ParsedEntry[]; unmatchedHeaders: string[] };
 
 function formatHHMMSS(totalSec: number): string {
   const sec = Math.trunc(Number(totalSec) || 0);
@@ -102,29 +115,16 @@ function splitCSVLine(line: string, delimiter: string): string[] {
   return cells;
 }
 
-function analyzeSimpleFromText(
-  text: string,
-  { secondsIndex, valueIndex, delimiter, verbose }: AnalyzeOptions,
+function analyzeSimpleRows(
+  rows: string[][],
+  { secondsIndex, valueIndex, verbose }: Omit<AnalyzeOptions, "delimiter">,
 ): { phases: Phase[]; durMap: Record<number, any> } {
-  const sample = text.slice(0, 4096);
-  const delim = delimiter ?? sniffDelimiter(sample);
-  if (verbose) console.log("[INFO] Using delimiter:", JSON.stringify(delim));
-  if (verbose) {
-    console.log(
-      `[INFO] Index-based parsing. secondsIndex=${secondsIndex}, valueIndex=${valueIndex}`,
-    );
-  }
-
-  const lines = text.split(/\r?\n/);
   const phases: Phase[] = [];
   let totalRows = 0;
   let prevValue: any = null;
   let runDuration = 0;
 
-  for (const line of lines) {
-    if (!line || /^\s*$/.test(line)) continue;
-    const cells = splitCSVLine(line, delim);
-
+  for (const cells of rows) {
     const allBlank = cells.every((c) =>
       (typeof c === "string" ? c : String(c)).trim() === "",
     );
@@ -225,6 +225,27 @@ function analyzeSimpleFromText(
   return { phases, durMap };
 }
 
+function analyzeSimpleFromText(
+  text: string,
+  { secondsIndex, valueIndex, delimiter, verbose }: AnalyzeOptions,
+): { phases: Phase[]; durMap: Record<number, any> } {
+  const sample = text.slice(0, 4096);
+  const delim = delimiter ?? sniffDelimiter(sample);
+  if (verbose) console.log("[INFO] Using delimiter:", JSON.stringify(delim));
+  if (verbose) {
+    console.log(
+      `[INFO] Index-based parsing. secondsIndex=${secondsIndex}, valueIndex=${valueIndex}`,
+    );
+  }
+
+  const rows = text
+    .split(/\r?\n/)
+    .filter((line) => line && !/^\s*$/.test(line))
+    .map((line) => splitCSVLine(line, delim));
+
+  return analyzeSimpleRows(rows, { secondsIndex, valueIndex, verbose });
+}
+
 function getGroupName(group: any): string {
   return String(group?.["group-name"] ?? group?.name ?? "").trim();
 }
@@ -283,11 +304,100 @@ function formatRangeValue(value: number, unit: string) {
   return String(value);
 }
 
+function phasesToPoints(phases: Phase[]): [string, any][] {
+  const points: [string, any][] = [];
+  for (const ph of phases) {
+    const dur = Number(ph?.duration_seconds ?? 0);
+    if (dur > 0) points.push([formatDurationPreserveDays(dur), ph.value]);
+  }
+  return points;
+}
+
+function parseCombinedCsvText(
+  text: string,
+  {
+    delimiter,
+    verbose,
+    targetOptions,
+  }: {
+    delimiter?: string | null;
+    verbose?: boolean;
+    targetOptions: CsvTargetOption[];
+  },
+): { secondsHeader: string; entries: ParsedEntry[]; unmatchedHeaders: string[] } {
+  const sample = text.slice(0, 4096);
+  const delim = delimiter ?? sniffDelimiter(sample);
+  const lines = text.split(/\r?\n/).filter((line) => line && !/^\s*$/.test(line));
+  if (lines.length < 2) {
+    throw new Error("Combined CSV needs a header row and at least one data row.");
+  }
+
+  const headers = splitCSVLine(lines[0], delim).map((cell) => String(cell).trim());
+  const dataRows = lines.slice(1).map((line) => splitCSVLine(line, delim));
+  const normalizedHeaders = headers.map((header) => normalizeTargetKey(header));
+  const secondsIndex = normalizedHeaders.findIndex((header) =>
+    new Set(["seconds", "second", "sec", "time", "times", "time_s"]).has(header),
+  );
+  const resolvedSecondsIndex = secondsIndex >= 0 ? secondsIndex : 0;
+
+  const headerIndexByKey = new Map<string, number>();
+  headers.forEach((header, index) => {
+    const key = normalizeTargetKey(header);
+    if (key && !headerIndexByKey.has(key)) headerIndexByKey.set(key, index);
+  });
+
+  const usedColumnIndices = new Set<number>([resolvedSecondsIndex]);
+  const entries: ParsedEntry[] = [];
+
+  for (const target of targetOptions) {
+    const candidateKeys = Array.from(
+      new Set([normalizeTargetKey(target.name), normalizeTargetKey(target.rangeKey)].filter(Boolean)),
+    );
+    const valueIndex = candidateKeys
+      .map((key) => headerIndexByKey.get(key))
+      .find(
+        (index): index is number =>
+          index != null && index !== resolvedSecondsIndex && !usedColumnIndices.has(index),
+      );
+
+    if (valueIndex == null) continue;
+    usedColumnIndices.add(valueIndex);
+
+    const { phases } = analyzeSimpleRows(dataRows, {
+      secondsIndex: resolvedSecondsIndex,
+      valueIndex,
+      verbose,
+    });
+    const points = phasesToPoints(phases);
+    entries.push({
+      target,
+      header: headers[valueIndex],
+      phases,
+      points,
+      out: { phases: [{ type: "csv-import", points }] },
+    });
+  }
+
+  if (entries.length === 0) {
+    throw new Error(
+      "No parameter columns matched the current protocol. Use a header row like: seconds, Temperature, Humidity, CO2, Cool White.",
+    );
+  }
+
+  const unmatchedHeaders = headers.filter((_, index) => !usedColumnIndices.has(index));
+  return {
+    secondsHeader: headers[resolvedSecondsIndex] || "seconds",
+    entries,
+    unmatchedHeaders,
+  };
+}
+
 /* ===================== UI Component ===================== */
 
 export default function CsvPhaseAnalyzer() {
   const secondsIndex = 0;
   const valueIndex = 1;
+  const [importMode, setImportMode] = useState<ImportMode>("single");
   const [delimiter, setDelimiter] = useState<string>("");
   const [verbose] = useState(false);
   const [targetParam, setTargetParam] = useState<string>("");
@@ -347,32 +457,33 @@ export default function CsvPhaseAnalyzer() {
     }
   }, [targetOptions, targetParam]);
 
-  const result = useMemo<
-    | null
-    | { phases: Phase[]; points: [string, any][]; out: any }
-    | { error: string }
-  >(() => {
+  const result = useMemo<null | ParseResult | { error: string }>(() => {
     if (!rawText) return null;
     try {
+      if (importMode === "combined") {
+        return {
+          kind: "combined",
+          ...parseCombinedCsvText(rawText, {
+            delimiter: delimiter ? delimiter : undefined,
+            verbose,
+            targetOptions,
+          }),
+        };
+      }
+
       const { phases } = analyzeSimpleFromText(rawText, {
         secondsIndex,
         valueIndex,
         delimiter: delimiter ? delimiter : undefined,
         verbose,
       });
-
-      const points: [string, any][] = [];
-      for (const ph of phases) {
-        const dur = Number(ph?.duration_seconds ?? 0);
-        if (dur > 0) points.push([formatDurationPreserveDays(dur), ph.value]);
-      }
-
-      return { phases, points, out: { phases: [{ type: "csv-import", points }] } };
+      const points = phasesToPoints(phases);
+      return { kind: "single", phases, points, out: { phases: [{ type: "csv-import", points }] } };
     } catch (e: any) {
       console.error(e);
       return { error: e?.message || String(e) };
     }
-  }, [rawText, delimiter, verbose]);
+  }, [rawText, delimiter, importMode, targetOptions, verbose]);
 
   function onPickFileClick() {
     fileInputRef.current?.click();
@@ -389,69 +500,81 @@ export default function CsvPhaseAnalyzer() {
     reader.readAsText(file, "utf-8");
   }
 
-  function mapValueForTarget(v: any): number {
+  function mapValueForTarget(target: CsvTargetOption | null, v: any): number {
     if (typeof v !== "number" || !Number.isFinite(v)) return 0;
-    if (!selectedTarget || !selectedTargetRange) return Math.round(v);
+    if (!target) return Math.round(v);
+    const range = getInputRange(target.rangeKey, profile);
 
-    if (selectedTarget.rangeKey === "Temperature") {
-      return Math.round(v * selectedTargetRange.scale);
+    if (target.rangeKey === "Temperature") {
+      return Math.round(v * range.scale);
     }
 
-    let next = selectedTargetRange.int ? Math.round(v) : v;
-    next = Math.max(selectedTargetRange.min, Math.min(selectedTargetRange.max, next));
+    let next = range.int ? Math.round(v) : v;
+    next = Math.max(range.min, Math.min(range.max, next));
 
-    if (selectedTargetRange.scale) next *= selectedTargetRange.scale;
+    if (range.scale) next *= range.scale;
     return Math.round(next);
   }
 
   function applyToProtocol() {
     if (!result || "error" in result) return;
     try {
-      if (!selectedTarget || !selectedTargetRange) {
-        alert("No target parameter is available for the current room.");
-        return;
-      }
-
-      const pointsRaw = result.points as [string, any][];
-      const bad = pointsRaw
-        .map(([, v]) => (typeof v === "number" ? v : Number(v)))
-        .filter(
-          (v) =>
-            Number.isFinite(v) &&
-            (v < selectedTargetRange.min || v > selectedTargetRange.max),
-        );
-
-      if (bad.length > 0) {
-        const examples = [...new Set(bad)]
-          .slice(0, 5)
-          .map((v) => formatRangeValue(v, selectedTarget.unit))
-          .join(", ");
-        const ok = window.confirm(
-          `${bad.length} ${selectedTarget.name} point(s) are outside the allowed range ` +
-          `(${formatRangeValue(selectedTargetRange.min, selectedTarget.unit)}-${formatRangeValue(selectedTargetRange.max, selectedTarget.unit)} for ${profile}):\n` +
-          `${examples}\n\nApply anyway?`,
-        );
-        if (!ok) return;
-      }
-
-      const points = pointsRaw
-        .filter(([t]) => !!t)
-        .map(([t, v]) => [t, mapValueForTarget(v)] as [string, number]);
-
-      const replaced = [{ type: "csv-import", points } as any];
       const next =
         typeof structuredClone === "function"
           ? structuredClone(protocol)
           : JSON.parse(JSON.stringify(protocol));
       const parts = next?.sections?.[0]?.parts || [];
-      const groupName = selectedTarget.name;
-      const gi = parts.findIndex((p: any) => (p["group-name"] || p.name) === groupName);
-      if (gi < 0) {
-        alert(`Group not found in current protocol: ${groupName}`);
+
+      const entries =
+        result.kind === "combined"
+          ? result.entries
+          : selectedTarget
+            ? [{ target: selectedTarget, header: selectedTarget.name, phases: result.phases, points: result.points, out: result.out }]
+            : [];
+
+      if (!entries.length) {
+        alert("No target parameter is available for the current room.");
         return;
       }
 
-      parts[gi].phases = replaced;
+      const warnings = entries
+        .map((entry) => {
+          const range = getInputRange(entry.target.rangeKey, profile);
+          const bad = entry.points
+            .map(([, v]) => (typeof v === "number" ? v : Number(v)))
+            .filter((v) => Number.isFinite(v) && (v < range.min || v > range.max));
+          if (!bad.length) return "";
+          const examples = [...new Set(bad)]
+            .slice(0, 4)
+            .map((v) => formatRangeValue(v, entry.target.unit))
+            .join(", ");
+          return `${entry.target.name}: ${bad.length} out of range (${formatRangeValue(range.min, entry.target.unit)}-${formatRangeValue(range.max, entry.target.unit)}), e.g. ${examples}`;
+        })
+        .filter(Boolean);
+
+      if (warnings.length > 0) {
+        const ok = window.confirm(
+          `Some CSV values are outside the allowed range for ${profile}:\n\n${warnings.join("\n")}\n\nApply anyway?`,
+        );
+        if (!ok) return;
+      }
+
+      const appliedGroups: string[] = [];
+      for (const entry of entries) {
+        const points = entry.points
+          .filter(([t]) => !!t)
+          .map(([t, v]) => [t, mapValueForTarget(entry.target, v)] as [string, number]);
+        const replaced = [{ type: "csv-import", points } as any];
+        const groupName = entry.target.name;
+        const gi = parts.findIndex((p: any) => (p["group-name"] || p.name) === groupName);
+        if (gi < 0) {
+          alert(`Group not found in current protocol: ${groupName}`);
+          return;
+        }
+        parts[gi].phases = replaced;
+        appliedGroups.push(groupName);
+      }
+
       for (const p of parts) {
         if (p && p["group-name"] == null && p.name) p["group-name"] = p.name;
       }
@@ -460,7 +583,11 @@ export default function CsvPhaseAnalyzer() {
       window.dispatchEvent(
         new CustomEvent("protocol:save-draft", { detail: { protocol: next } }),
       );
-      alert(`${groupName} phases replaced from CSV (${replaced.length} phases).`);
+      alert(
+        result.kind === "combined"
+          ? `${appliedGroups.length} parameter groups replaced from one CSV: ${appliedGroups.join(", ")}.`
+          : `${appliedGroups[0]} phases replaced from CSV (1 phase set).`,
+      );
     } catch (e: any) {
       alert("Failed to apply phases: " + (e?.message || String(e)));
     }
@@ -479,6 +606,25 @@ export default function CsvPhaseAnalyzer() {
         <li>A precise step program created in Excel</li>
       </ul>
 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <button
+          type="button"
+          onClick={() => setImportMode("single")}
+          className={`rounded border p-3 text-left ${importMode === "single" ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white"}`}
+        >
+          <div className="text-sm font-semibold text-slate-800">Single Parameter CSV</div>
+          <div className="mt-1 text-xs text-slate-600">One file with `seconds, value` for one selected parameter.</div>
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportMode("combined")}
+          className={`rounded border p-3 text-left ${importMode === "combined" ? "border-indigo-500 bg-indigo-50" : "border-slate-200 bg-white"}`}
+        >
+          <div className="text-sm font-semibold text-slate-800">Combined CSV</div>
+          <div className="mt-1 text-xs text-slate-600">One file with a header row and multiple parameter columns at once.</div>
+        </button>
+      </div>
+
       <div
         style={{
           background: "#f8fafc",
@@ -491,12 +637,26 @@ export default function CsvPhaseAnalyzer() {
           Required format
         </div>
         <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-          <li>
-            Two columns per row: <code>seconds, value</code>
-          </li>
-          <li>
-            <b>No header row!</b>
-          </li>
+          {importMode === "single" ? (
+            <>
+              <li>
+                Two columns per row: <code>seconds, value</code>
+              </li>
+              <li>
+                <b>No header row!</b>
+              </li>
+            </>
+          ) : (
+            <>
+              <li>
+                One header row is required, for example: <code>seconds, Temperature, Humidity, CO2</code>
+              </li>
+              <li>
+                First column should be <code>seconds</code>, <code>sec</code>, or <code>time</code>
+              </li>
+              <li>Each extra column header should match a protocol parameter name such as Temperature, CO2, Humidity, Cool White, DeepRed, FarRed, Blue, Red, UVA, or UVB</li>
+            </>
+          )}
           <li>Delimiter can be comma, semicolon, or tab</li>
           <li>
             See{" "}
@@ -526,7 +686,9 @@ export default function CsvPhaseAnalyzer() {
             color: "#334155",
             margin: 0,
           }}
-        >{`0, 10\n1, 10\n2, 10\n3, 20`}</pre>
+        >{importMode === "single"
+          ? `0, 10\n1, 10\n2, 10\n3, 20`
+          : `seconds,Temperature,Humidity,CO2,Cool White\n0,20.0,70,420,0\n1,20.0,70,420,0\n2,20.5,70,420,25\n3,21.0,68,450,25`}</pre>
       </div>
 
       <div
@@ -549,32 +711,44 @@ export default function CsvPhaseAnalyzer() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-        <div>
-          <label className="block text-sm font-medium mb-1">Target parameter</label>
-          <select
-            className="border rounded p-2 w-full"
-            value={targetParam}
-            onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetParam(e.target.value)}
-            disabled={!targetOptions.length}
-          >
-            {targetOptions.map((option) => (
-              <option key={option.name} value={option.name}>
-                {option.name}
-              </option>
-            ))}
-          </select>
-          <div className="mt-1 text-xs text-slate-500">
-            Current room: {profile}. Room-specific lamp channels: {roomLampSummary || "none"}.
-          </div>
-          {selectedTarget && selectedTargetRange && (
+        {importMode === "single" ? (
+          <div>
+            <label className="block text-sm font-medium mb-1">Target parameter</label>
+            <select
+              className="border rounded p-2 w-full"
+              value={targetParam}
+              onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setTargetParam(e.target.value)}
+              disabled={!targetOptions.length}
+            >
+              {targetOptions.map((option) => (
+                <option key={option.name} value={option.name}>
+                  {option.name}
+                </option>
+              ))}
+            </select>
             <div className="mt-1 text-xs text-slate-500">
-              Allowed CSV values for {selectedTarget.name}:{" "}
-              {formatRangeValue(selectedTargetRange.min, selectedTarget.unit)}-
-              {formatRangeValue(selectedTargetRange.max, selectedTarget.unit)}
-              {selectedTarget.isLamp ? " (room lamp channel)" : ""}.
+              Current room: {profile}. Room-specific lamp channels: {roomLampSummary || "none"}.
             </div>
-          )}
-        </div>
+            {selectedTarget && selectedTargetRange && (
+              <div className="mt-1 text-xs text-slate-500">
+                Allowed CSV values for {selectedTarget.name}:{" "}
+                {formatRangeValue(selectedTargetRange.min, selectedTarget.unit)}-
+                {formatRangeValue(selectedTargetRange.max, selectedTarget.unit)}
+                {selectedTarget.isLamp ? " (room lamp channel)" : ""}.
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <label className="block text-sm font-medium mb-1">Detected parameter columns</label>
+            <div className="border rounded p-2 min-h-[42px] bg-slate-50 text-sm text-slate-700">
+              {targetOptions.map((option) => option.name).join(", ")}
+            </div>
+            <div className="mt-1 text-xs text-slate-500">
+              Current room: {profile}. Any matching columns in the uploaded combined CSV will be applied together.
+            </div>
+          </div>
+        )}
 
         <div>
           <label className="block text-sm font-medium mb-1">
@@ -595,7 +769,7 @@ export default function CsvPhaseAnalyzer() {
             onClick={onPickFileClick}
             className="ml-auto border rounded px-3 py-2 text-sm bg-white hover:bg-slate-50"
           >
-            Choose CSV...
+            {importMode === "single" ? "Choose Single CSV..." : "Choose Combined CSV..."}
           </button>
           <input
             ref={fileInputRef}
@@ -624,62 +798,104 @@ export default function CsvPhaseAnalyzer() {
             <button
               onClick={applyToProtocol}
               className="border rounded px-3 py-2 text-sm bg-indigo-600 text-white hover:bg-indigo-500"
-              title={`Replace phases for ${selectedTarget?.name ?? targetParam} in current protocol`}
+              title={
+                result.kind === "combined"
+                  ? "Replace all matched protocol groups from this combined CSV"
+                  : `Replace phases for ${selectedTarget?.name ?? targetParam} in current protocol`
+              }
             >
-              Apply to Protocol
+              {result.kind === "combined" ? "Apply All Matched Columns" : "Apply to Protocol"}
             </button>
           </div>
 
-          <div className="border rounded p-3">
-            <div className="font-medium mb-2">Phase runs</div>
-            <div className="overflow-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-1 pr-2">#</th>
-                    <th className="text-left py-1 pr-2">Value</th>
-                    <th className="text-right py-1 pr-2">Duration (s)</th>
-                    <th className="text-right py-1 pr-2">Duration (HH:MM:SS)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.phases.map((ph: Phase, i: number) => (
-                    <tr key={i} className="border-b">
-                      <td className="py-1 pr-2">{i + 1}</td>
-                      <td className="py-1 pr-2">{String(ph.value)}</td>
-                      <td className="py-1 pr-2 text-right">{ph.duration_seconds}</td>
-                      <td className="py-1 pr-2 text-right">{formatHHMMSS(ph.duration_seconds)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
+          {result.kind === "single" ? (
+            <>
+              <div className="border rounded p-3">
+                <div className="font-medium mb-2">Phase runs</div>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-1 pr-2">#</th>
+                        <th className="text-left py-1 pr-2">Value</th>
+                        <th className="text-right py-1 pr-2">Duration (s)</th>
+                        <th className="text-right py-1 pr-2">Duration (HH:MM:SS)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.phases.map((ph: Phase, i: number) => (
+                        <tr key={i} className="border-b">
+                          <td className="py-1 pr-2">{i + 1}</td>
+                          <td className="py-1 pr-2">{String(ph.value)}</td>
+                          <td className="py-1 pr-2 text-right">{ph.duration_seconds}</td>
+                          <td className="py-1 pr-2 text-right">{formatHHMMSS(ph.duration_seconds)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
 
-          <div className="border rounded p-3">
-            <div className="font-medium mb-2">Points (HH:MM:SS, value)</div>
-            <div className="text-xs text-slate-600 mb-2">Derived one-per-phase where duration &gt; 0.</div>
-            <div className="overflow-auto">
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-1 pr-2">#</th>
-                    <th className="text-left py-1 pr-2">HH:MM:SS</th>
-                    <th className="text-left py-1 pr-2">Value</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.points.map(([t, v]: [string, any], i: number) => (
-                    <tr key={i} className="border-b">
-                      <td className="py-1 pr-2">{i + 1}</td>
-                      <td className="py-1 pr-2">{t}</td>
-                      <td className="py-1 pr-2">{String(v)}</td>
+              <div className="border rounded p-3">
+                <div className="font-medium mb-2">Points (HH:MM:SS, value)</div>
+                <div className="text-xs text-slate-600 mb-2">Derived one-per-phase where duration &gt; 0.</div>
+                <div className="overflow-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-1 pr-2">#</th>
+                        <th className="text-left py-1 pr-2">HH:MM:SS</th>
+                        <th className="text-left py-1 pr-2">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {result.points.map(([t, v]: [string, any], i: number) => (
+                        <tr key={i} className="border-b">
+                          <td className="py-1 pr-2">{i + 1}</td>
+                          <td className="py-1 pr-2">{t}</td>
+                          <td className="py-1 pr-2">{String(v)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="border rounded p-3">
+              <div className="font-medium mb-2">Matched Columns</div>
+              <div className="text-xs text-slate-600 mb-2">
+                Time column: <b>{result.secondsHeader}</b>. Each matched parameter column will replace the corresponding group in the current protocol.
+              </div>
+              <div className="overflow-auto">
+                <table className="w-full text-sm border-collapse">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-1 pr-2">Parameter</th>
+                      <th className="text-left py-1 pr-2">CSV column</th>
+                      <th className="text-right py-1 pr-2">Phase runs</th>
+                      <th className="text-right py-1 pr-2">Points</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {result.entries.map((entry) => (
+                      <tr key={entry.target.name} className="border-b">
+                        <td className="py-1 pr-2">{entry.target.name}</td>
+                        <td className="py-1 pr-2">{entry.header}</td>
+                        <td className="py-1 pr-2 text-right">{entry.phases.length}</td>
+                        <td className="py-1 pr-2 text-right">{entry.points.length}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {result.unmatchedHeaders.length > 0 ? (
+                <div className="mt-3 text-xs text-slate-500">
+                  Ignored CSV columns: {result.unmatchedHeaders.join(", ")}
+                </div>
+              ) : null}
             </div>
-          </div>
+          )}
         </>
       ) : rawText && result && "error" in result ? (
         <div className="text-sm text-red-600">Error: {result.error}</div>

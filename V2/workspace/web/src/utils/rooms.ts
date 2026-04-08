@@ -63,5 +63,18 @@ export function detectRoomFromFilename(filename: string): RoomConfig | null {
   for (const key of ["G8", "G7", "G6", "G5", "G4"]) {
     if (upper.includes(key)) return ROOM_CONFIGS[key];
   }
+
+  const aliasPatterns: Array<[string, RegExp]> = [
+    ["G8", /(?:^|[^A-Z0-9])8(?:[^A-Z0-9]|$)/],
+    ["G7", /(?:^|[^A-Z0-9])7(?:[^A-Z0-9]|$)/],
+    ["G6", /(?:^|[^A-Z0-9])6(?:[^A-Z0-9]|$)/],
+    ["G5", /(?:^|[^A-Z0-9])5(?:[^A-Z0-9]|$)/],
+    ["G4", /(?:^|[^A-Z0-9])4(?:[^A-Z0-9]|$)/],
+  ];
+
+  for (const [key, pattern] of aliasPatterns) {
+    if (pattern.test(upper)) return ROOM_CONFIGS[key];
+  }
+
   return null;
 }
