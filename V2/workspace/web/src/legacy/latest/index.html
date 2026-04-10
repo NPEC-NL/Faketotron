@@ -20,6 +20,8 @@
   .toolbar .btn:first-child {margin-right:180px;min-width:120px;}
   .toolbar-row .btn:first-child {margin-right:0px;min-width:120px;}
   .toolbar-warning{margin-right:auto;display:none;align-items:center;padding:4px 8px;border:1px solid #d9a441;border-radius:4px;background:#fff4d6;color:#7a4b00;font-size:12px;line-height:1.3;max-width:420px}
+  .toolbar-repeat24{margin-right:auto;display:none;align-items:center;gap:8px;padding:4px 8px;border:1px solid #b8cadb;border-radius:4px;background:#f3f8fc;color:#27435d;font-size:12px;line-height:1.3;max-width:520px}
+  .toolbar-repeat24 input{width:74px;height:24px;border:1px solid var(--bd);border-radius:3px;background:#fff;padding:0 6px}
   .btn{min-width:85px;height:28px;border:1px solid var(--b);background:linear-gradient(#fff,#e6e9ee);border-radius:4px;cursor:pointer}
   .btn.small{min-width:75px;height:24px}
   .btn.tall{height:48px;line-height:1.1;padding:4px 10px}
@@ -104,6 +106,12 @@
         <button class="btn" id="btnAddPhase" disabled>Add Phase</button>
         <div class="toolbar-row">
         <div class="toolbar-warning" id="durationConsistencyWarning"></div>
+        <div class="toolbar-repeat24" id="repeat24Controls">
+          <span>All parameters match clean 24-hour blocks.</span>
+          <label for="repeat24Days">Paste extra days:</label>
+          <input id="repeat24Days" type="number" min="1" step="1" value="1" />
+          <button class="btn small tall" id="btnRepeat24Hours">Repeat last 24 hours<br>for all parameters</button>
+        </div>
         <button class="btn small tall" id="btnCopyPhases" disabled>Copy<br>phase(s)</button>
         <button class="btn small tall" id="btnPastePhases" disabled>Paste<br>phase(s)</button>
         <button class="btn small tall" id="btnMoveSelUp" disabled>Move selected<br>up</button>
@@ -734,18 +742,121 @@ function getDurationConsistencyState(){
     hasRed: Array.from(issueByGroupId.values()).includes('red'),
   };
 }
+function getRepeat24State(){
+  const daySeconds = 24 * 3600;
+  const totalsByGroupId = new Map(groups.map(g => [g.id, g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0)]));
+  const nonEmptyGroups = groups.filter(g => (totalsByGroupId.get(g.id) || 0) > 0);
+  if(!nonEmptyGroups.length) return { canRepeat:false, currentDays:0 };
+  if(nonEmptyGroups.length !== groups.length) return { canRepeat:false, currentDays:0 };
+  const totals = nonEmptyGroups.map(g => totalsByGroupId.get(g.id) || 0);
+  const firstTotal = totals[0] || 0;
+  const allSame = totals.every(total => total === firstTotal);
+  const allFullDay = totals.every(total => total >= daySeconds);
+  const allDivisible = totals.every(total => total % daySeconds === 0);
+  return {
+    canRepeat: allSame && allFullDay && allDivisible,
+    currentDays: firstTotal > 0 ? Math.floor(firstTotal / daySeconds) : 0,
+  };
+}
 function updateDurationConsistencyWarning(){
   const el = $('#durationConsistencyWarning');
+  const repeatEl = $('#repeat24Controls');
   if(!el) return;
 
   const state = getDurationConsistencyState();
+  const repeatState = getRepeat24State();
   if(!state.hasAtLeastOneFullDay || (!state.hasYellow && !state.hasRed)){
     el.style.display = 'none';
     el.textContent = '';
+    if(repeatEl){
+      repeatEl.style.display = repeatState.canRepeat ? 'flex' : 'none';
+    }
     return;
   }
   el.textContent = 'In yellow are parameters which have a different time length, and in red are parameters not divisible by 24 hours.';
   el.style.display = 'flex';
+  if(repeatEl) repeatEl.style.display = 'none';
+}
+
+function sliceCsvPointsToSeconds(points, maxSeconds){
+  let remaining = Math.max(0, Math.floor(maxSeconds || 0));
+  const out = [];
+  for(const point of (Array.isArray(points) ? points : [])){
+    if(remaining <= 0) break;
+    if(!Array.isArray(point) || point.length < 2) continue;
+    const pointSeconds = durationToSeconds(point[0]);
+    if(!Number.isFinite(pointSeconds) || pointSeconds <= 0) continue;
+    const takeSeconds = Math.min(remaining, pointSeconds);
+    const nextPoint = deepCopy(point);
+    nextPoint[0] = secondsToDisplayDuration(takeSeconds);
+    out.push(nextPoint);
+    remaining -= takeSeconds;
+  }
+  return { points: out, consumed: maxSeconds - remaining };
+}
+
+function slicePhasesToSeconds(phases, maxSeconds){
+  let remaining = Math.max(0, Math.floor(maxSeconds || 0));
+  const out = [];
+  for(const phase of (Array.isArray(phases) ? phases : [])){
+    if(remaining <= 0) break;
+    const phaseSeconds = phaseDurationSeconds(phase);
+    if(phaseSeconds <= 0) continue;
+    const takeSeconds = Math.min(remaining, phaseSeconds);
+    const nextPhase = deepCopy(phase);
+    if(nextPhase.type === 'csv-import'){
+      const slicedCsv = sliceCsvPointsToSeconds(nextPhase.points, takeSeconds);
+      nextPhase.points = slicedCsv.points;
+      if(slicedCsv.consumed <= 0) continue;
+    } else {
+      nextPhase.duration = secondsToDisplayDuration(takeSeconds);
+    }
+    out.push(nextPhase);
+    remaining -= takeSeconds;
+  }
+  return { phases: out, consumed: maxSeconds - remaining };
+}
+function sliceCsvPointsFromEndToSeconds(points, maxSeconds){
+  let remaining = Math.max(0, Math.floor(maxSeconds || 0));
+  const out = [];
+  const src = Array.isArray(points) ? points : [];
+  for(let i=src.length-1; i>=0; i--){
+    if(remaining <= 0) break;
+    const point = src[i];
+    if(!Array.isArray(point) || point.length < 2) continue;
+    const pointSeconds = durationToSeconds(point[0]);
+    if(!Number.isFinite(pointSeconds) || pointSeconds <= 0) continue;
+    const takeSeconds = Math.min(remaining, pointSeconds);
+    const nextPoint = deepCopy(point);
+    nextPoint[0] = secondsToDisplayDuration(takeSeconds);
+    out.unshift(nextPoint);
+    remaining -= takeSeconds;
+  }
+  return { points: out, consumed: maxSeconds - remaining };
+}
+
+function slicePhasesFromEndToSeconds(phases, maxSeconds){
+  let remaining = Math.max(0, Math.floor(maxSeconds || 0));
+  const out = [];
+  const src = Array.isArray(phases) ? phases : [];
+  for(let i=src.length-1; i>=0; i--){
+    if(remaining <= 0) break;
+    const phase = src[i];
+    const phaseSeconds = phaseDurationSeconds(phase);
+    if(phaseSeconds <= 0) continue;
+    const takeSeconds = Math.min(remaining, phaseSeconds);
+    const nextPhase = deepCopy(phase);
+    if(nextPhase.type === 'csv-import'){
+      const slicedCsv = sliceCsvPointsFromEndToSeconds(nextPhase.points, takeSeconds);
+      nextPhase.points = slicedCsv.points;
+      if(slicedCsv.consumed <= 0) continue;
+    } else {
+      nextPhase.duration = secondsToDisplayDuration(takeSeconds);
+    }
+    out.unshift(nextPhase);
+    remaining -= takeSeconds;
+  }
+  return { phases: out, consumed: maxSeconds - remaining };
 }
 
 function summaryGrid(container, pairs){
@@ -1178,6 +1289,46 @@ function updatePhaseToolsState(){
   }
 }
 
+function repeatLast24HoursForAllGroups(extraDays){
+  const daySeconds = 24 * 3600;
+  const repeatCount = Math.max(0, Math.floor(Number(extraDays) || 0));
+  if(repeatCount <= 0){
+    alert('Enter at least 1 extra day to paste.');
+    return false;
+  }
+  const repeatState = getRepeat24State();
+  if(!repeatState.canRepeat){
+    alert('All parameters must have the same duration, divisible by 24 hours, before repeating the first 24 hours.');
+    return false;
+  }
+
+  const firstDayByGroupId = new Map();
+  for(const g of groups){
+    const sliced = slicePhasesFromEndToSeconds(g.phases || [], daySeconds);
+    if(sliced.consumed !== daySeconds){
+      alert(`Could not extract a full last 24 hours for ${g.name}.`);
+      return false;
+    }
+    firstDayByGroupId.set(g.id, sliced.phases);
+  }
+
+  groups.forEach(g => {
+    const firstDay = firstDayByGroupId.get(g.id) || [];
+    const clones = [];
+    for(let i=0; i<repeatCount; i++){
+      clones.push(...deepCopy(firstDay));
+    }
+    g.phases.push(...clones);
+  });
+
+  clearSelection();
+  renderTabs();
+  renderPhases();
+  updateGroupDurationField();
+  updateOverallDuration();
+  return true;
+}
+
 function getSelectedBlocks(){
   const idxs = [...selectedPhaseIdx].sort((a,b)=>a-b);
   const blocks = [];
@@ -1226,6 +1377,24 @@ $('#btnPastePhases').onclick = ()=>{
   clearSelection();
   for(let k=0; k<clones.length; k++){ selectedPhaseIdx.add(at+k); }
   renderPhases(); updateGroupDurationField(); updateOverallDuration();
+};
+
+$('#btnRepeat24Hours').onclick = ()=>{
+  const input = $('#repeat24Days');
+  const repeatCount = input ? Number(input.value || 0) : 0;
+  const ok = repeatLast24HoursForAllGroups(repeatCount);
+  if(ok && input){
+    input.value = String(Math.max(1, Math.floor(repeatCount)));
+  }
+};
+
+$('#repeat24Days').oninput = ()=>{
+  const input = $('#repeat24Days');
+  if(!input) return;
+  const n = Math.max(1, Math.floor(Number(input.value || 1) || 1));
+  if(String(n) !== input.value && input.value !== ''){
+    // keep user typing fluid; normalize only when needed elsewhere
+  }
 };
 
 

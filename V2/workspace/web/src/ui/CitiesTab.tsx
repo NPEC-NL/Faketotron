@@ -13,7 +13,7 @@ import {
 } from "recharts";
 
 import * as Store from "../state/store";
-import type { Protocol } from "../profiles";
+import { newProtocol, type ProfileKey, type Protocol } from "../profiles";
 import { detectRoomFromFilename, type RoomConfig } from "../utils/rooms";
 import { parseLampCalibrationCsv, safeNumber, spectrumAtPercent, toUmol, type SpectrumPoint } from "../utils/spectra";
 
@@ -1012,6 +1012,10 @@ function buildConstantPhase(value: number) {
   return { type: "const", value, duration: "24:00:00" } as const;
 }
 
+function uvGroupNameForRoom(roomId?: string | null): "UVA" | "UVB" {
+  return roomId === "G7" ? "UVA" : "UVB";
+}
+
 function buildTemperatureFollowPoints(
   bins: CalibrationBin[],
   room: RoomConfig,
@@ -1047,6 +1051,7 @@ function buildTemperatureFollowPoints(
 export default function CitiesTab() {
   const protocol = useProto((s: any) => s.protocol) as Protocol;
   const setProtocol = useProto((s: any) => s.setProtocol);
+  const setProfile = useProto((s: any) => s.setProfile);
 
   const [dataSource, setDataSource] = useState<DataSourceKind>("cities");
   const [cityFile, setCityFile] = useState<File | null>(null);
@@ -1078,10 +1083,12 @@ export default function CitiesTab() {
   }, [calibrationFile]);
   const protocolParts = protocol?.sections?.[0]?.parts ?? [];
   const uvGroupName = useMemo(() => {
-    if (findPartIndex(protocolParts, ["UVB"]) >= 0) return "UVB";
+    const roomDriven = uvGroupNameForRoom(result?.room.id ?? activeRoom?.id ?? null);
+    if (findPartIndex(protocolParts, [roomDriven]) >= 0) return roomDriven;
     if (findPartIndex(protocolParts, ["UVA"]) >= 0) return "UVA";
-    return "UVB";
-  }, [protocolParts]);
+    if (findPartIndex(protocolParts, ["UVB"]) >= 0) return "UVB";
+    return roomDriven;
+  }, [activeRoom?.id, protocolParts, result?.room.id]);
 
   const loadedCityName = useMemo(() => {
     if (!cityData || cityData.cities.length !== 1) return "";
@@ -1447,9 +1454,20 @@ export default function CitiesTab() {
       }
     }
 
+    const targetProfile = result.room.id as ProfileKey;
+    const targetProtocol =
+      protocol?.sections?.[0]?.parts?.length &&
+      result.room.channels.every((channel) =>
+        (protocol.sections?.[0]?.parts ?? []).some(
+          (part: any) => ((part?.["group-name"] || part?.name) ?? "") === channel.protocolGroupName,
+        ),
+      )
+        ? protocol
+        : newProtocol(targetProfile);
+
     const next = typeof structuredClone === "function"
-      ? structuredClone(protocol)
-      : JSON.parse(JSON.stringify(protocol));
+      ? structuredClone(targetProtocol)
+      : JSON.parse(JSON.stringify(targetProtocol));
     const parts = next?.sections?.[0]?.parts ?? [];
     const missing = result.room.channels.filter((channel) =>
       parts.findIndex((part: any) => ((part?.["group-name"] || part?.name) ?? "") === channel.protocolGroupName) < 0,
@@ -1457,15 +1475,16 @@ export default function CitiesTab() {
 
     if (missing.length > 0) {
       const message =
-        `Current protocol does not match ${result.room.id}. Missing light groups: ` +
+        `Could not prepare the ${result.room.id} protocol automatically. Missing light groups: ` +
         missing.map((channel) => channel.protocolGroupName).join(", ") +
-        ". Load or create a matching room protocol first.";
+        ".";
       setError(message);
       window.alert(message);
       return;
     }
 
-    const requiredControls = ["CO2", "Humidity", "Temperature", uvGroupName];
+    const targetUvGroupName = uvGroupNameForRoom(result.room.id);
+    const requiredControls = ["CO2", "Humidity", "Temperature", targetUvGroupName];
     const missingControls = requiredControls.filter((name) => findPartIndex(parts, [name]) < 0);
     if (missingControls.length > 0) {
       const message =
@@ -1513,10 +1532,10 @@ export default function CitiesTab() {
           : [{ type: "csv-import", points: buildTemperatureFollowPoints(result.expandedBins, result.room, nightMinC, dayMaxC, avgTempC) }],
     };
 
-    const uvIndex = findPartIndex(parts, [uvGroupName]);
+    const uvIndex = findPartIndex(parts, [targetUvGroupName]);
     parts[uvIndex] = {
       ...parts[uvIndex],
-      "group-name": parts[uvIndex]?.["group-name"] ?? parts[uvIndex]?.name ?? uvGroupName,
+      "group-name": parts[uvIndex]?.["group-name"] ?? parts[uvIndex]?.name ?? targetUvGroupName,
       phases: [buildConstantPhase(Math.round(uvValue))],
     };
 
@@ -1524,6 +1543,7 @@ export default function CitiesTab() {
       part && part["group-name"] == null && part.name ? { ...part, "group-name": part.name } : part,
     );
 
+    setProfile(targetProfile);
     setProtocol(next);
     window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: next } }));
     setError("");
