@@ -165,20 +165,9 @@ function formatDayRange(startDay: number, endDay: number): string {
   return `${dayLabel(startDay)} to ${dayLabel(endDay)}`;
 }
 
-function pickSevenOrFewerDays(startDay: number, endDay: number): number[] {
-  if (endDay < startDay) return [startDay];
-  const total = endDay - startDay + 1;
-  if (total <= 7) return Array.from({ length: total }, (_, idx) => startDay + idx);
-  const picked = new Set<number>();
-  for (let i = 0; i < 7; i++) {
-    const pos = i * ((total - 1) / 6);
-    picked.add(startDay + Math.round(pos));
-  }
-  return Array.from(picked).sort((a, b) => a - b);
-}
-
 type Row = { i: number; name: string; unit: string; series: XY[]; phaseStarts: number[]; xmax: number };
 type MultiSeriesDaySlice = { dayIndex: number; label: string; valuesBySeriesKey: Record<string, Array<number | null>> };
+type GroupedDaySlice = { key: string; label: string; dayIndexes: number[]; valuesBySeriesKey: Record<string, Array<number | null>> };
 
 function normalizeType(t: any): "fixed" | "ramp" | "sin" | "clouds" | "csv-import" {
   const s = String(t || "").toLowerCase().trim();
@@ -292,6 +281,47 @@ function formatAxisTick(value: number): string {
   return fixed.endsWith(".0") ? fixed.slice(0, -2) : fixed;
 }
 
+function formatDayGroupLabel(dayIndexes: number[]): string {
+  if (!dayIndexes.length) return "Day ?";
+  const ranges: Array<{ start: number; end: number }> = [];
+  dayIndexes.forEach((dayIndex) => {
+    const last = ranges[ranges.length - 1];
+    if (!last || dayIndex > last.end + 1) ranges.push({ start: dayIndex, end: dayIndex });
+    else last.end = dayIndex;
+  });
+  const rendered = ranges.map((range) => (
+    range.start === range.end
+      ? String(range.start + 1)
+      : `${range.start + 1}-${range.end + 1}`
+  ));
+  return `${dayIndexes.length > 1 ? "Days" : "Day"} ${rendered.join(", ")}`;
+}
+
+function groupDaySlices(days: MultiSeriesDaySlice[], rows: Row[]): GroupedDaySlice[] {
+  const grouped: GroupedDaySlice[] = [];
+  const bySignature = new Map<string, GroupedDaySlice>();
+  days.forEach((day) => {
+    const signature = JSON.stringify(
+      rows.map((row) => day.valuesBySeriesKey[seriesKey(row.i)] ?? []),
+    );
+    const existing = bySignature.get(signature);
+    if (existing) {
+      existing.dayIndexes.push(day.dayIndex);
+      existing.label = formatDayGroupLabel(existing.dayIndexes);
+      return;
+    }
+    const created: GroupedDaySlice = {
+      key: signature,
+      label: formatDayGroupLabel([day.dayIndex]),
+      dayIndexes: [day.dayIndex],
+      valuesBySeriesKey: day.valuesBySeriesKey,
+    };
+    bySignature.set(signature, created);
+    grouped.push(created);
+  });
+  return grouped;
+}
+
 function SectionCard({ title, subtitle, children }: { title: string; subtitle?: string; children: React.ReactNode }) {
   return (
     <div style={{ border: "1px solid #dbe3ea", borderRadius: 12, background: "#ffffff", padding: 16, boxShadow: "0 4px 14px rgba(15, 23, 42, 0.04)" }}>
@@ -304,7 +334,7 @@ function SectionCard({ title, subtitle, children }: { title: string; subtitle?: 
   );
 }
 
-function Consistency3DChart({ rows, days }: { rows: Row[]; days: MultiSeriesDaySlice[] }) {
+function Consistency3DChart({ rows, days }: { rows: Row[]; days: GroupedDaySlice[] }) {
   const values = days.flatMap((day) =>
     rows.flatMap((row) => (day.valuesBySeriesKey[seriesKey(row.i)] ?? []).filter((value): value is number => value != null)),
   );
@@ -314,7 +344,7 @@ function Consistency3DChart({ rows, days }: { rows: Row[]; days: MultiSeriesDayS
   const vw = 1000;
   const vh = 430;
   const left = 96;
-  const right = 120;
+  const right = 180;
   const top = 26;
   const bottom = 64;
   const depthX = 16;
@@ -352,7 +382,7 @@ function Consistency3DChart({ rows, days }: { rows: Row[]; days: MultiSeriesDayS
           const labelX = left + plotW + depth * depthX + 18;
           const labelY = baseY(depth) - 2;
           return (
-            <g key={`day-slice-${day.dayIndex}`}>
+            <g key={`day-slice-${day.key}`}>
               <line x1={left + depth * depthX} y1={baseY(depth)} x2={left + plotW + depth * depthX} y2={baseY(depth)} stroke="#dbe4ee" />
               {rows.map((row) => {
                 const rowValues = day.valuesBySeriesKey[seriesKey(row.i)] ?? [];
@@ -360,13 +390,13 @@ function Consistency3DChart({ rows, days }: { rows: Row[]; days: MultiSeriesDayS
                 if (!line) return null;
                 const lineColor = colorFor(row.name);
                 return (
-                  <g key={`${day.dayIndex}-${row.i}`}>
+                  <g key={`${day.key}-${row.i}`}>
                     <path d={line} fill="none" stroke="#ffffff" strokeOpacity={0.7} strokeWidth={3.5} />
                     <path d={line} fill="none" stroke={lineColor} strokeOpacity={strokeOpacity} strokeWidth={1.8} strokeDasharray={dashFor(row.name)} />
                   </g>
                 );
               })}
-              <text x={labelX} y={labelY} fontSize="11" fill="#0f172a">{day.label}</text>
+              <text x={labelX} y={labelY} fontSize="10.5" fill="#0f172a">{day.label}</text>
             </g>
           );
         })}
@@ -499,7 +529,10 @@ export default function GraphTab() {
   }, [rows, dayIndex]);
   const safeConsistencyStart = clamp(consistencyStartDay, 0, Math.max(0, totalDays - 1));
   const safeConsistencyEnd = clamp(Math.max(consistencyEndDay, safeConsistencyStart), safeConsistencyStart, Math.max(0, totalDays - 1));
-  const selectedConsistencyDays = useMemo(() => pickSevenOrFewerDays(safeConsistencyStart, safeConsistencyEnd), [safeConsistencyStart, safeConsistencyEnd]);
+  const selectedConsistencyDays = useMemo(
+    () => Array.from({ length: safeConsistencyEnd - safeConsistencyStart + 1 }, (_, idx) => safeConsistencyStart + idx),
+    [safeConsistencyStart, safeConsistencyEnd],
+  );
   const consistencySlices = useMemo(() => {
     return selectedConsistencyDays.map((selectedDay) => ({
       dayIndex: selectedDay,
@@ -518,11 +551,15 @@ export default function GraphTab() {
   const differingExperimentalRows = useMemo(() => {
     return rows.filter((row) => seriesDifferAcrossDays(consistencySlices, seriesKey(row.i)));
   }, [rows, consistencySlices]);
+  const groupedConsistencySlices = useMemo(() => {
+    const relevantRows = differingExperimentalRows.length ? differingExperimentalRows : rows;
+    return groupDaySlices(consistencySlices, relevantRows);
+  }, [consistencySlices, differingExperimentalRows, rows]);
   const consistencySummary = useMemo(() => {
     const totalSelected = safeConsistencyEnd - safeConsistencyStart + 1;
-    const sampledNote = totalSelected > selectedConsistencyDays.length ? ` Showing ${selectedConsistencyDays.length} sampled days from ${totalSelected} selected days.` : ` Showing ${selectedConsistencyDays.length} day${selectedConsistencyDays.length === 1 ? "" : "s"}.`;
-    return `${formatDayRange(safeConsistencyStart, safeConsistencyEnd)}.${sampledNote}`;
-  }, [safeConsistencyStart, safeConsistencyEnd, selectedConsistencyDays.length]);
+    const uniqueCount = groupedConsistencySlices.length;
+    return `${formatDayRange(safeConsistencyStart, safeConsistencyEnd)}. ${totalSelected} selected day${totalSelected === 1 ? "" : "s"} collapsed into ${uniqueCount} unique daily pattern${uniqueCount === 1 ? "" : "s"}.`;
+  }, [safeConsistencyStart, safeConsistencyEnd, groupedConsistencySlices.length]);
 
   return (
     <div key={hardKey} style={{ display: "grid", gap: 20 }}>
@@ -554,7 +591,7 @@ export default function GraphTab() {
           <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>End day</span><input type="number" min={safeConsistencyStart + 1} max={totalDays} value={safeConsistencyEnd + 1} onChange={(event) => setConsistencyEndDay(clamp(Number(event.target.value || safeConsistencyStart + 1) - 1, safeConsistencyStart, totalDays - 1))} /></label>
         </div>
         <div style={{ marginBottom: 10, fontSize: 13, color: "#334155", fontWeight: 600 }}>{consistencySummary}</div>
-        <div style={{ marginBottom: 12, fontSize: 12, color: "#64748b" }}>{SHARED_AXIS_NOTE} This graph compares the chosen days hour by hour and hides any parameter that is identical across all shown days, so only drifting or changed patterns remain visible for cross-validation.</div>
+        <div style={{ marginBottom: 12, fontSize: 12, color: "#64748b" }}>{SHARED_AXIS_NOTE} This graph compares the chosen days hour by hour, merges any days with the same daily pattern into one plotted layer, and lists those matching day numbers on the right. Parameters that are identical across all selected days are still hidden so only changed patterns remain visible for cross-validation.</div>
         {differingExperimentalRows.length ? <div className="hstack" style={{ gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
           {differingExperimentalRows.map((row) => {
             const color = colorFor(row.name);
@@ -562,7 +599,7 @@ export default function GraphTab() {
             return <span key={`exp-legend-${row.i}`} style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><span style={{ width: 18, height: 0, borderTop: `3px ${dash ? "dashed" : "solid"} ${color}`, display: "inline-block" }} /><span>{row.name}</span></span>;
           })}
         </div> : null}
-        {differingExperimentalRows.length ? <Consistency3DChart rows={differingExperimentalRows} days={consistencySlices} /> : <div style={{ padding: 18, border: "1px dashed #cbd5e1", borderRadius: 10, background: "#f8fafc", color: "#475569", fontSize: 13 }}>No parameters differ across the selected days. The sampled days follow the same 24-hour pattern within the comparison resolution of this graph.</div>}
+        {differingExperimentalRows.length ? <Consistency3DChart rows={differingExperimentalRows} days={groupedConsistencySlices} /> : <div style={{ padding: 18, border: "1px dashed #cbd5e1", borderRadius: 10, background: "#f8fafc", color: "#475569", fontSize: 13 }}>No parameters differ across the selected days. All selected days collapse to the same 24-hour pattern: {formatDayGroupLabel(selectedConsistencyDays)}.</div>}
       </SectionCard>
 
       <SectionCard title="Flexible Graph" subtitle="Full-protocol graph with zoom, scroll, phase markers, and read-only phase inspection.">

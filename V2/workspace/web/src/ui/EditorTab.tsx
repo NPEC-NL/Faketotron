@@ -87,9 +87,12 @@ export default function EditorTab() {
   const profile  = useProto((s: any) => s.profile);
   const protocol = useProto((s: any) => s.protocol);
   const setProto = useProto((s: any) => s.setProtocol);
+  const setProfile = useProto((s: any) => s.setProfile);
 
   // loop suppression
   const suppressPullUntilRef = useRef(0);
+  const lastPushedProfileRef = useRef<string | null>(null);
+  const lastPushedProtocolRef = useRef<string | null>(null);
 
   /* Bridge injected into legacy page */
   const BRIDGE = `
@@ -101,6 +104,11 @@ export default function EditorTab() {
     try { parent.postMessage({type:'legacy:ready'}, '*'); } catch(e) { log('notifyReady failed', e); }
   }
 
+  function currentProfile(){
+    try { return window.ACTIVE_PROFILE || document.getElementById('profileSel')?.value || null; }
+    catch(e){ return null; }
+  }
+
   function snapshot(){
     try{
       var build = window.buildProtocolJson || window.exportProtocolJson;
@@ -108,7 +116,7 @@ export default function EditorTab() {
         var proto = build();
         if (proto) {
           log('snapshot → sending legacy:protocol-updated');
-          parent.postMessage({type:'legacy:protocol-updated', protocol: proto}, '*');
+          parent.postMessage({type:'legacy:protocol-updated', protocol: proto, profile: currentProfile()}, '*');
         } else {
           log('snapshot → build() returned null/undefined');
         }
@@ -213,6 +221,8 @@ export default function EditorTab() {
       const msg = (ev && ev.data) || {};
       if (msg?.type === "legacy:ready") {
         setReady(true);
+        lastPushedProfileRef.current = String(profile ?? "");
+        lastPushedProtocolRef.current = JSON.stringify(protocol ?? null);
         iframeRef.current?.contentWindow?.postMessage(
           { type: "host:init", profile, protocol },
           "*"
@@ -223,8 +233,13 @@ export default function EditorTab() {
           // still within suppression window
           return;
         }
+        if (msg?.profile && msg.profile !== profile) {
+          lastPushedProfileRef.current = String(msg.profile);
+          setProfile(msg.profile);
+        }
         console.log("[Editor] <- legacy:protocol-updated (pull into store)");
         const fixed = canonicalizeProtocol(msg.protocol);
+        lastPushedProtocolRef.current = JSON.stringify(fixed ?? null);
         setProto(fixed);
         // tell graphs other subscribers that a fresh protocol arrived
         queueMicrotask(() => window.dispatchEvent(new CustomEvent("protocol:loaded")));
@@ -233,7 +248,34 @@ export default function EditorTab() {
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
-  }, [profile, protocol, setProto]);
+  }, [profile, protocol, setProfile, setProto]);
+
+  useEffect(() => {
+    if (!ready) return;
+    const iframeWindow = iframeRef.current?.contentWindow;
+    if (!iframeWindow) return;
+
+    const profileSig = String(profile ?? "");
+    const protocolSig = JSON.stringify(protocol ?? null);
+    const shouldPushProfile = lastPushedProfileRef.current !== profileSig;
+    const shouldPushProtocol = lastPushedProtocolRef.current !== protocolSig;
+    if (!shouldPushProfile && !shouldPushProtocol) return;
+
+    suppressPullUntilRef.current = Date.now() + 1200;
+
+    if (shouldPushProfile) {
+      console.log("[Editor] -> host:set-profile (syncing external profile change)");
+      iframeWindow.postMessage({ type: "host:set-profile", profile }, "*");
+      lastPushedProfileRef.current = profileSig;
+    }
+
+    const protocolDelayMs = shouldPushProfile ? 80 : 0;
+    window.setTimeout(() => {
+      console.log("[Editor] -> host:set-protocol (syncing external protocol change)");
+      iframeWindow.postMessage({ type: "host:set-protocol", protocol }, "*");
+      lastPushedProtocolRef.current = protocolSig;
+    }, protocolDelayMs);
+  }, [ready, profile, protocol]);
 
   // Let GraphTab send drafts here (this is the event it expects!)
   useEffect(() => {
@@ -246,6 +288,7 @@ export default function EditorTab() {
       setProto(next);
       // temporarily suppress pulls originating from our own push
       suppressPullUntilRef.current = Date.now() + 900;
+      lastPushedProtocolRef.current = JSON.stringify(next ?? null);
       // push to legacy iframe
       console.log("[Editor] -> host:set-protocol (pushing merged draft into legacy)");
       iframeRef.current?.contentWindow?.postMessage({ type: "host:set-protocol", protocol: next }, "*");

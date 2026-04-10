@@ -9,7 +9,7 @@ const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
 /**
  * React version of the Python script:
- * - Reads a CSV of rows shaped like [seconds, value] (index-based, no headers).
+ * - Reads duration-based CSV rows where "seconds" is the duration for the uploaded value on that row.
  * - Groups consecutive identical values and sums seconds per run.
  * - Rounds numeric values to 1 decimal.
  * - Auto-detects delimiter (",", ";", "\t", "|") unless user specifies one.
@@ -304,6 +304,27 @@ function formatRangeValue(value: number, unit: string) {
   return String(value);
 }
 
+function sampleValueForTarget(target: CsvTargetOption, rowIndex: number): string {
+  const presets: Record<string, Array<number | string>> = {
+    Temperature: [20.0, 20.0, 20.5, 21.0],
+    Humidity: [70, 70, 70, 68],
+    CO2: [420, 420, 420, 450],
+    "Cool White": [0, 0, 25, 25],
+    DeepRed: [0, 0, 20, 20],
+    FarRed: [0, 0, 15, 15],
+    Red: [0, 0, 25, 30],
+    Blue: [0, 0, 10, 10],
+    Cyan: [0, 0, 12, 12],
+    Green: [0, 0, 8, 8],
+    Amber: [0, 0, 18, 18],
+    UVA: [0, 0, 0, 0],
+    UVB: [0, 0, 0, 0],
+    Hydroponics: [0, 0, 0, 0],
+  };
+  const values = presets[target.name] ?? presets[target.rangeKey] ?? [0, 0, 10, 10];
+  return String(values[Math.min(rowIndex, values.length - 1)] ?? values[values.length - 1] ?? 0);
+}
+
 function phasesToPoints(phases: Phase[]): [string, any][] {
   const points: [string, any][] = [];
   for (const ph of phases) {
@@ -380,7 +401,7 @@ function parseCombinedCsvText(
 
   if (entries.length === 0) {
     throw new Error(
-      "No parameter columns matched the current protocol. Use a header row like: seconds, Temperature, Humidity, CO2, Cool White.",
+      `No parameter columns matched the current protocol. Use one header row with this order for the current room: seconds, ${targetOptions.map((target) => target.name).join(", ")}.`,
     );
   }
 
@@ -434,8 +455,24 @@ export default function CsvPhaseAnalyzer() {
           isLamp: lampGroups.has(name),
         };
       })
-      .filter((option): option is CsvTargetOption => option !== null);
+      .filter((option): option is CsvTargetOption => option !== null)
+      .sort((a, b) => a.name.localeCompare(b.name));
   }, [protocolParts, profile, roomConfig]);
+
+  const combinedDetectedColumns = useMemo(
+    () => ["seconds", ...targetOptions.map((option) => option.name)],
+    [targetOptions],
+  );
+
+  const combinedExampleText = useMemo(() => {
+    const rows = [
+      ["1", ...targetOptions.map((target) => sampleValueForTarget(target, 0))],
+      ["1", ...targetOptions.map((target) => sampleValueForTarget(target, 1))],
+      ["2", ...targetOptions.map((target) => sampleValueForTarget(target, 2))],
+      ["3", ...targetOptions.map((target) => sampleValueForTarget(target, 3))],
+    ];
+    return [combinedDetectedColumns.join(","), ...rows.map((row) => row.join(","))].join("\n");
+  }, [combinedDetectedColumns, targetOptions]);
 
   const selectedTarget = useMemo(
     () => targetOptions.find((option) => option.name === targetParam) ?? null,
@@ -597,8 +634,9 @@ export default function CsvPhaseAnalyzer() {
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       <h2 className="text-xl font-semibold">Import Time-Series CSV</h2>
       <p className="text-sm text-slate-600">
-        Import a second-by-second time series and automatically convert it into a structured phase
-        schedule. This option is ideal when you already have a predefined program, such as:
+        Import a duration-based time-series CSV and automatically convert it into a structured phase
+        schedule. The <code>seconds</code> column is the duration for that row&apos;s uploaded value, so the total time
+        is the sum of those durations. This option is ideal when you already have a predefined program, such as:
       </p>
       <ul className="text-sm text-slate-600 list-disc list-inside space-y-1 ml-1">
         <li>A light pulse pattern for one room-specific lamp channel</li>
@@ -645,16 +683,24 @@ export default function CsvPhaseAnalyzer() {
               <li>
                 <b>No header row!</b>
               </li>
+              <li>
+                The first column is the duration for that value on that row, not a cumulative timestamp
+              </li>
             </>
           ) : (
             <>
               <li>
-                One header row is required, for example: <code>seconds, Temperature, Humidity, CO2</code>
+                One header row is required.
               </li>
               <li>
                 First column should be <code>seconds</code>, <code>sec</code>, or <code>time</code>
               </li>
-              <li>Each extra column header should match a protocol parameter name such as Temperature, CO2, Humidity, Cool White, DeepRed, FarRed, Blue, Red, UVA, or UVB</li>
+              <li>
+                The first column is the duration for that row&apos;s values, not a cumulative timestamp
+              </li>
+              <li>
+                For the current room ({profile}), use this header order: <code>{combinedDetectedColumns.join(", ")}</code>
+              </li>
             </>
           )}
           <li>Delimiter can be comma, semicolon, or tab</li>
@@ -687,8 +733,8 @@ export default function CsvPhaseAnalyzer() {
             margin: 0,
           }}
         >{importMode === "single"
-          ? `0, 10\n1, 10\n2, 10\n3, 20`
-          : `seconds,Temperature,Humidity,CO2,Cool White\n0,20.0,70,420,0\n1,20.0,70,420,0\n2,20.5,70,420,25\n3,21.0,68,450,25`}</pre>
+          ? `1,10\n1,10\n2,10\n3,20`
+          : combinedExampleText}</pre>
       </div>
 
       <div
@@ -742,10 +788,11 @@ export default function CsvPhaseAnalyzer() {
           <div>
             <label className="block text-sm font-medium mb-1">Detected parameter columns</label>
             <div className="border rounded p-2 min-h-[42px] bg-slate-50 text-sm text-slate-700">
-              {targetOptions.map((option) => option.name).join(", ")}
+              {combinedDetectedColumns.join(", ")}
             </div>
             <div className="mt-1 text-xs text-slate-500">
-              Current room: {profile}. Any matching columns in the uploaded combined CSV will be applied together.
+              Current room: {profile}. This is the required combined-column order for the current room, including the
+              <code className="mx-1">seconds</code> duration column first.
             </div>
           </div>
         )}

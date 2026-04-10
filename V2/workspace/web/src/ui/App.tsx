@@ -75,10 +75,13 @@ export default function App() {
 
       <div
         ref={editorRef}
-        style={{ display: tab === "editor" ? "block" : "none", marginBottom: 12 }}
+        style={{
+          display: tab === "editor" ? "block" : "none",
+          margin: "20px auto 12px",
+          width: "100%",
+          maxWidth: 1280,
+        }}
       >
-        <div style={{ marginBottom: 8 }}>
-        </div>
         <EditorTab />
       </div>
 

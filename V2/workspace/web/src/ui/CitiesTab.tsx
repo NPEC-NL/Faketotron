@@ -1543,11 +1543,16 @@ export default function CitiesTab() {
       part && part["group-name"] == null && part.name ? { ...part, "group-name": part.name } : part,
     );
 
+    const previousProfile = profile as string | undefined;
     setProfile(targetProfile);
     setProtocol(next);
     window.dispatchEvent(new CustomEvent("protocol:save-draft", { detail: { protocol: next } }));
     setError("");
-    window.alert(`Applied the expanded 24h schedule and control settings to ${result.room.id}.`);
+    window.alert(
+      previousProfile && previousProfile !== targetProfile
+        ? `Applied to Faketron for ${result.room.id}. The Editor room was first switched from ${previousProfile} to ${targetProfile}, and only after that the fitted 24h protocol and control settings were written into the protocol.`
+        : `Applied to Faketron for ${result.room.id}. The Editor room already matched ${targetProfile}, so the fitted 24h protocol and control settings were written directly into that room protocol.`,
+    );
   }
 
   return (
@@ -1950,6 +1955,13 @@ export default function CitiesTab() {
                 These settings are applied together with the fitted light schedule when you upload to the Faketron.
                 CO2, Humidity, and {uvGroupName} are written as constant 24-hour phases. Temperature can be constant
                 as well, or it can follow the average light-intensity trend.
+              </div>
+
+              <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                Important: if the Editor tab is currently on another room, for example <strong>G4</strong>, pressing
+                <strong> Apply to Faketron</strong> must first switch the Editor room to the detected calibration room
+                <strong> {result.room.id}</strong>. Only after that room change can the fitted schedule be applied to the
+                correct protocol.
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">

@@ -16,12 +16,15 @@
   .left{width:800px;background:var(--panel);border:1px solid var(--b);display:flex;flex-direction:column}
   .right{width:360px;margin-left:auto;background:var(--panel);border:1px solid var(--b);display:flex;flex-direction:column}
   .toolbar{height:auto;min-height:44px;background:var(--bar);border-bottom:1px solid var(--b);display:flex;flex-wrap:wrap;align-items:center;padding:6px 10px;gap:12px;justify-content:flex-end;}
-  .toolbar-row{width:100%;display:flex;gap:8px;justify-content:flex-end;margin-top:4px}
+  .toolbar-row{width:100%;display:flex;gap:10px;align-items:center;margin-top:4px}
   .toolbar .btn:first-child {margin-right:180px;min-width:120px;}
   .toolbar-row .btn:first-child {margin-right:0px;min-width:120px;}
-  .toolbar-warning{margin-right:auto;display:none;align-items:center;padding:4px 8px;border:1px solid #d9a441;border-radius:4px;background:#fff4d6;color:#7a4b00;font-size:12px;line-height:1.3;max-width:420px}
-  .toolbar-repeat24{margin-right:auto;display:none;align-items:center;gap:8px;padding:4px 8px;border:1px solid #b8cadb;border-radius:4px;background:#f3f8fc;color:#27435d;font-size:12px;line-height:1.3;max-width:520px}
+  .toolbar-warning{display:none;align-items:center;padding:4px 8px;border:1px solid #d9a441;border-radius:4px;background:#fff4d6;color:#7a4b00;font-size:12px;line-height:1.3;max-width:420px}
+  .toolbar-repeat24{display:none;align-items:center;gap:10px;padding:4px 10px;border:1px solid #b8cadb;border-radius:4px;background:#f3f8fc;color:#27435d;font-size:12px;line-height:1.3;flex:0 1 auto}
+  .toolbar-repeat24 .repeat-copy{max-width:150px}
   .toolbar-repeat24 input{width:74px;height:24px;border:1px solid var(--bd);border-radius:3px;background:#fff;padding:0 6px}
+  .toolbar-repeat24 .btn{min-width:142px;height:56px;padding:6px 12px;flex-shrink:0}
+  .toolbar-actions{margin-left:auto;display:flex;gap:4px;justify-content:flex-end}
   .btn{min-width:85px;height:28px;border:1px solid var(--b);background:linear-gradient(#fff,#e6e9ee);border-radius:4px;cursor:pointer}
   .btn.small{min-width:75px;height:24px}
   .btn.tall{height:48px;line-height:1.1;padding:4px 10px}
@@ -107,15 +110,17 @@
         <div class="toolbar-row">
         <div class="toolbar-warning" id="durationConsistencyWarning"></div>
         <div class="toolbar-repeat24" id="repeat24Controls">
-          <span>All parameters match clean 24-hour blocks.</span>
+          <span class="repeat-copy">All parameters match clean 24-hour blocks.</span>
           <label for="repeat24Days">Paste extra days:</label>
           <input id="repeat24Days" type="number" min="1" step="1" value="1" />
           <button class="btn small tall" id="btnRepeat24Hours">Repeat last 24 hours<br>for all parameters</button>
         </div>
-        <button class="btn small tall" id="btnCopyPhases" disabled>Copy<br>phase(s)</button>
-        <button class="btn small tall" id="btnPastePhases" disabled>Paste<br>phase(s)</button>
-        <button class="btn small tall" id="btnMoveSelUp" disabled>Move selected<br>up</button>
-        <button class="btn small tall" id="btnMoveSelDown" disabled>Move selected<br>down</button>
+        <div class="toolbar-actions">
+          <button class="btn small tall" id="btnCopyPhases" disabled>Copy<br>phase(s)</button>
+          <button class="btn small tall" id="btnPastePhases" disabled>Paste<br>phase(s)</button>
+          <button class="btn small tall" id="btnMoveSelUp" disabled>Move selected<br>up</button>
+          <button class="btn small tall" id="btnMoveSelDown" disabled>Move selected<br>down</button>
+        </div>
         </div>
       </div>
       <div id="groupTabs" class="group-tabs" style="display:none;"></div>
@@ -147,14 +152,6 @@
       </div>
       <div class="prop"><label>Repeat:</label><input id="repeat" class="input" value="Infinitely times" /><button class="btn" id="btnSetInf">Set Infinitely</button></div>
       <div class="prop"><label>Duration:</label><input id="duration" class="input ro" value="0 hours" readonly /><div></div></div>
-      <div class="instruction" style="padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#fafafa">
-        <div style="font-size:14px;line-height:1.5;margin-bottom:6px">
-          <div>Credits: Made by Danna Shao and Maarten Bots</div>
-          <div>Instructions: see <a href="https://github.com/NPEC-NL/Faketotron/blob/NPEC-WU/README.md" target="_blank" rel="noreferrer">ReadMe / tutorial</a></div>
-          <div><strong>Included example protocols:</strong> <a href="https://github.com/NPEC-NL/Faketotron/tree/NPEC-WU/Standard%20Protocols" target="_blank" rel="noreferrer">G4, G5, G6, G7, G8 (incl. crazy experimental variants)</a></div>
-        </div>
-        <p style="font-size:12px;">Disclaimer: This software is an independent, non-commercial imitation of certain user interface features from the Protocol Editor component of the Fytotron Client by <a href="https://psi.cz/">Photon Systems Instruments (PSI)</a>. It is provided solely for academic, educational, and research purposes. This software is not affiliated with, endorsed by, or produced by PSI. All trademarks, product names, and intellectual property rights remain the sole property of their respective owners. This imitation does not connect to, control, or operate any real instruments and must not be used in any production, clinical, agricultural, or commercial setting. Any resemblance to the original software is for educational purposes only. For a brief tutorial, see the <a href="https://github.com/NPEC-NL/Faketotron/blob/NPEC-WU/README.md" target="_blank" rel="noreferrer">ReadMe / tutorial</a>.</p>
-      </div>
     </div>
   </div>
 
@@ -1941,9 +1938,13 @@ $('#btnSave').onclick=()=>{
   if(!isProtocolValid()){alert('All variables must be assigned and each type must have a group before saving.');return;}
   if(!validateLogicStartTime()) return;
   const data=buildProtocolJson(); if(!data) return;
-  // Compute total duration per group using phaseDurationSeconds (supports csv-import)
-  const totals = groups.map(g=>g.phases.reduce((s,p)=>s+phaseDurationSeconds(p),0));
-  // If not all the same, proceed silently (no intrusive prompt).
+  const durationState = getDurationConsistencyState();
+  if(durationState.hasAtLeastOneFullDay && (durationState.hasYellow || durationState.hasRed)){
+    const proceed = confirm(
+      'In yellow are parameters which have a different time length, and in red are parameters not divisible by 24 hours.\n\nCheck whether you are sure you want to save this protocol.'
+    );
+    if(!proceed) return;
+  }
   integrityCheckAndSave(data);
 };
 
