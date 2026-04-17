@@ -25,6 +25,7 @@ Notes
 - Wavelengths are trimmed to 380-780 nm (5 nm grid) to match the other city files.
 - Values are already in W/m^2/nm; no unit conversion is applied.
 - Timestamps are treated as local MST time (UTC-7; New Mexico does not observe DST).
+- Spectral irradiance values are multiplied by OUTPUT_SCALE_FACTOR before export.
 - Only time bins with at least one positive measurement are written.
 """
 
@@ -50,6 +51,9 @@ SUN_INCLUDED = "TRUE"
 
 # Output wavelength grid (nm) — trimmed from the full 350-1700 nm source
 OUTPUT_WAVELENGTHS_NM: list[float] = np.arange(380, 785, 5, dtype=float).tolist()
+
+# Uniform scaling applied to exported spectral irradiance values.
+OUTPUT_SCALE_FACTOR = 1 #0.65
 
 BIN_MINUTES = 5
 
@@ -106,6 +110,7 @@ def load_spectra(file_path: Path) -> pd.DataFrame:
 
     # Ensure column names are plain Python floats
     df.columns = [float(c) for c in df.columns]
+    df = df * OUTPUT_SCALE_FACTOR
 
     # Drop rows where the entire spectrum is zero or negative (nighttime)
     is_daytime = df.sum(axis=1) > 0

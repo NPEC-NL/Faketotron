@@ -35,6 +35,7 @@ Notes
   with the default calibrate.py settings.
 - Timestamps are local civil time; no timezone conversion is applied.
 - Spectra are interpolated to a 5 nm grid from 380 to 780 nm.
+- Spectral irradiance values are multiplied by OUTPUT_SCALE_FACTOR before export.
 - Only time bins with at least one positive measurement are written.
 """
 
@@ -60,6 +61,9 @@ SUN_INCLUDED = "TRUE"
 
 # Raw Excel values are in mW/m^2/nm; the pipeline expects W/m^2/nm.
 MW_TO_W = 1 / 1000.0
+
+# Uniform scaling applied to exported spectral irradiance values.
+OUTPUT_SCALE_FACTOR = 1 #0.45
 
 # Output wavelength grid (nm)
 OUTPUT_WAVELENGTHS_NM: list[float] = np.arange(380, 785, 5, dtype=float).tolist()
@@ -188,8 +192,13 @@ def load_file(file_path: Path) -> pd.DataFrame:
     for coeff_key, indices in coeff_groups.items():
         source_wavelengths = _compute_wavelengths(*coeff_key, n_samples=n_samples)
         idx_arr = np.asarray(indices)
-        # Convert mW/m^2/nm -> W/m^2/nm and clip any negative instrument noise
-        batch = np.clip(spectral_values[idx_arr], 0.0, None) * MW_TO_W
+        # Convert mW/m^2/nm -> W/m^2/nm, clip negative instrument noise,
+        # then apply the global export scaling factor.
+        batch = (
+            np.clip(spectral_values[idx_arr], 0.0, None)
+            * MW_TO_W
+            * OUTPUT_SCALE_FACTOR
+        )
         interp_fn = interp1d(
             source_wavelengths,
             batch,
