@@ -7,13 +7,14 @@ import CsvTab from "./CsvTab";
 import CitiesTab from "./CitiesTab";
 import FytInspector from "./FytInspector";
 import Welcome from "./Welcome";
+import ExperimentCheckTab from "./ExperimentCheckTab";
 import { newProtocol } from "../profiles";
 import * as Store from "../state/store";
 import npecLogo from "../assets/NPEC.png";
 import { LeafButton } from "../LeafButton";
 const useStoreAny: any = (Store as any).useProto ?? (Store as any).useStore;
 
-type TabKey = "welcome" | "editor" | "graph" | "light" | "csv" | "cities" | "inspector";
+type TabKey = "welcome" | "editor" | "graph" | "light" | "csv" | "cities" | "check" | "inspector";
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>("welcome");
@@ -62,6 +63,7 @@ export default function App() {
         {TabBtn("light", "Light Tools")}
         {TabBtn("cities", "Cities")}
         {TabBtn("csv", "Time-Series CSV")}
+        {TabBtn("check", "Experiment Check")}
     {/* FYT Inspector tab hidden intentionally; keep logic and panel for future debugging */}
           <div className="flex items-center gap-3 pl-4 border-l border-slate-300">
             <img src={npecLogo} alt="NPEC logo" className="h-24 w-auto" />
@@ -102,6 +104,10 @@ export default function App() {
 
       <div style={{ display: tab === "cities" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
         <CitiesTab />
+      </div>
+
+      <div style={{ display: tab === "check" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>
+        <ExperimentCheckTab />
       </div>
 
       <div style={{ display: tab === "inspector" ? "block" : "none", margin: "20px", border: "2px solid lightgrey", padding: "10px" }}>

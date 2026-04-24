@@ -20,7 +20,8 @@ const HOUR_SECONDS = 60 * 60;
 const DAY_WINDOW_STEP_SECONDS = 60;
 const HOURLY_AVG_STEP_SECONDS = 5 * 60;
 const DIFFERENCE_EPSILON = 0.01;
-const SHARED_AXIS_NOTE = "Shared y-axis: CO2 and temperature are divided by 10 so all parameters fit in one overview.";
+const SHARED_AXIS_NOTE = "Shared y-axis: most parameters are shown directly as intensity [%]. CO2 and temperature are divided by 10 on the graph, so all parameters can stay visible together on one overview without the larger CO2 and temperature values dominating the axis scale.";
+const SHARED_AXIS_LABEL = "Intensity [%] (except: CO2,C°/10)";
 
 const has = (s: string | undefined, sub: string) => (s || "").toLowerCase().includes(sub.toLowerCase());
 
@@ -61,6 +62,11 @@ function scaleYByName(name: string, y: number): number {
   if (has(n, "co2")) return y / 10;
   if (has(n, "temperature") || has(n, "temp")) return y / 10;
   return y;
+}
+
+function isScaledSeries(name: string): boolean {
+  const n = (name || "").toLowerCase();
+  return has(n, "co2") || has(n, "temperature") || has(n, "temp");
 }
 
 function yAt(series: XY[], x: number): number | null {
@@ -402,7 +408,7 @@ function Consistency3DChart({ rows, days }: { rows: Row[]; days: GroupedDaySlice
         })}
         {xTicks.map((tick) => <g key={`x-tick-${tick}`}><line x1={mapX(tick, 0)} y1={baseY(depthCount)} x2={mapX(tick, 0)} y2={baseY(depthCount) + 6} stroke="#94a3b8" /><text x={mapX(tick, 0)} y={baseY(depthCount) + 20} fontSize="11" fill="#64748b" textAnchor="middle">{formatHourLabel(tick)}</text></g>)}
         <text x={left + plotW / 2} y={vh - 14} fontSize="12" fill="#475569" textAnchor="middle">Hour of day (hourly averages)</text>
-        <text x={24} y={top + plotH / 2} fontSize="12" fill="#475569" textAnchor="middle" transform={`rotate(-90 24 ${top + plotH / 2})`}>Scaled value</text>
+        <text x={24} y={top + plotH / 2} fontSize="12" fill="#475569" textAnchor="middle" transform={`rotate(-90 24 ${top + plotH / 2})`}>{SHARED_AXIS_LABEL}</text>
       </svg>
     </div>
   );
@@ -572,11 +578,11 @@ export default function GraphTab() {
         </div>
         <div style={{ width: "100%", height: 360 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={dayWindowData} margin={{ top: 12, right: 24, left: 26, bottom: 12 }}>
+            <LineChart data={dayWindowData} margin={{ top: 12, right: 24, left: 34, bottom: 12 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
               <XAxis dataKey="hour" type="number" domain={[0, 24]} ticks={[0, 4, 8, 12, 16, 20, 24]} tickFormatter={formatHourLabel} label={{ value: "Time of day", position: "insideBottom", offset: -6 }} />
-              <YAxis width={74} domain={["auto", "auto"]} tick={{ fontSize: 11 }} tickFormatter={(value) => formatAxisTick(Number(value))} label={{ value: "Scaled value", angle: -90, position: "insideLeft", dx: -10 }} />
-              <Tooltip labelFormatter={(value) => formatHourLabel(Number(value))} formatter={(value: any, _name: any, item: any) => { const row = rowBySeriesKey.get(String(item?.dataKey ?? "")); const unit = row?.unit ? ` ${row.unit}` : ""; return [value == null ? "-" : `${Number(value).toFixed(2)}${unit}`, row?.name ?? item?.name ?? ""]; }} />
+              <YAxis width={102} domain={["auto", "auto"]} tick={{ fontSize: 11 }} tickFormatter={(value) => formatAxisTick(Number(value))} label={{ value: SHARED_AXIS_LABEL, angle: -90, position: "insideLeft", dx: -8, dy: 82 }} />
+              <Tooltip labelFormatter={(value) => formatHourLabel(Number(value))} formatter={(value: any, _name: any, item: any) => { const row = rowBySeriesKey.get(String(item?.dataKey ?? "")); const unit = row?.unit ? ` ${row.unit}` : ""; const numericValue = value == null ? null : Number(value); const actualValue = row && isScaledSeries(row.name) && numericValue != null ? numericValue * 10 : numericValue; const suffix = row && isScaledSeries(row.name) ? " (axis shows /10)" : ""; return [actualValue == null ? "-" : `${actualValue.toFixed(2)}${unit}${suffix}`, row?.name ?? item?.name ?? ""]; }} />
               <Legend />
               {rows.map((row) => <Line key={seriesKey(row.i)} type="monotone" dataKey={seriesKey(row.i)} name={row.name} stroke={colorFor(row.name)} strokeDasharray={dashFor(row.name)} dot={false} strokeWidth={2} connectNulls={false} isAnimationActive={false} />)}
             </LineChart>
@@ -585,13 +591,19 @@ export default function GraphTab() {
         <div style={{ marginTop: 10, fontSize: 12, color: "#64748b" }}>{SHARED_AXIS_NOTE} This graph always shows one 24-hour window. Use the day scroller to move through long experiments such as 40-day schedules.</div>
       </SectionCard>
 
-      <SectionCard title="Experimental Duration Graph" subtitle="Hourly averages across selected days, used as a cross-validation for experimental design so you can check that the full experiment remains correct over time. Only parameters that differ between the chosen days are shown.">
+      <SectionCard title="Experimental Duration Graph" subtitle="Compare hourly averages across a selected day range. This is a cross-check for long experiments: it hides unchanged parameters and keeps only the patterns that actually vary between the chosen days.">
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 12 }}>
-          <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>Start day</span><input type="number" min={1} max={totalDays} value={safeConsistencyStart + 1} onChange={(event) => setConsistencyStartDay(clamp(Number(event.target.value || 1) - 1, 0, totalDays - 1))} /></label>
-          <label style={{ display: "grid", gap: 6 }}><span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>End day</span><input type="number" min={safeConsistencyStart + 1} max={totalDays} value={safeConsistencyEnd + 1} onChange={(event) => setConsistencyEndDay(clamp(Number(event.target.value || safeConsistencyStart + 1) - 1, safeConsistencyStart, totalDays - 1))} /></label>
+          <label style={{ display: "grid", gap: 6, padding: 12, border: "1px solid #cbd5e1", borderRadius: 12, background: "#ffffff", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Start day</span>
+            <input type="number" min={1} max={totalDays} value={safeConsistencyStart + 1} onChange={(event) => setConsistencyStartDay(clamp(Number(event.target.value || 1) - 1, 0, totalDays - 1))} style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a", fontWeight: 600 }} />
+          </label>
+          <label style={{ display: "grid", gap: 6, padding: 12, border: "1px solid #cbd5e1", borderRadius: 12, background: "#ffffff", boxShadow: "0 1px 2px rgba(15, 23, 42, 0.04)" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>End day</span>
+            <input type="number" min={safeConsistencyStart + 1} max={totalDays} value={safeConsistencyEnd + 1} onChange={(event) => setConsistencyEndDay(clamp(Number(event.target.value || safeConsistencyStart + 1) - 1, safeConsistencyStart, totalDays - 1))} style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a", fontWeight: 600 }} />
+          </label>
         </div>
         <div style={{ marginBottom: 10, fontSize: 13, color: "#334155", fontWeight: 600 }}>{consistencySummary}</div>
-        <div style={{ marginBottom: 12, fontSize: 12, color: "#64748b" }}>{SHARED_AXIS_NOTE} This graph compares the chosen days hour by hour, merges any days with the same daily pattern into one plotted layer, and lists those matching day numbers on the right. Parameters that are identical across all selected days are still hidden so only changed patterns remain visible for cross-validation.</div>
+        <div style={{ marginBottom: 12, fontSize: 12, color: "#64748b" }}>{SHARED_AXIS_NOTE} Each plotted layer is one unique 24-hour pattern built from hourly averages. If several selected days have the same hourly pattern, they are merged into one layer and those matching day numbers are listed on the right. If a parameter stays identical across the whole selected range, it is hidden so you can focus only on the parts of the experiment that actually change over time.</div>
         {differingExperimentalRows.length ? <div className="hstack" style={{ gap: 16, flexWrap: "wrap", marginBottom: 10 }}>
           {differingExperimentalRows.map((row) => {
             const color = colorFor(row.name);
@@ -626,7 +638,7 @@ export default function GraphTab() {
             {rows.map((row, idx) => { if (!visible.has(idx)) return null; const color = colorFor(row.name); const dash = dashFor(row.name); const d = pathFrom(row.series, row.name, idx); const thick = hoverIdx === idx ? 3 : 2; return <g key={idx} onMouseEnter={() => setHoverIdx(idx)} onMouseLeave={() => setHoverIdx(null)}><path d={d} fill="none" stroke="#fff" strokeOpacity={0.9} strokeWidth={thick + 3} /><path d={d} fill="none" stroke={color} strokeWidth={thick} strokeDasharray={dash} /></g>; })}
             {rows.map((row, idx) => { if (!visible.has(idx)) return null; const color = colorFor(row.name); const offset = nudgePx(idx); return row.phaseStarts.map((px, pi) => { if (px < xMin || px > xMax) return null; const yRaw = yAt(row.series, px); if (yRaw == null) return null; const x = mapX(px); const y = mapY(scaleYByName(row.name, yRaw)) + offset; return <g key={`${idx}-${pi}`} style={{ cursor: "pointer" }} onClick={() => setSelPhase({ gi: idx, pi })}><circle cx={x} cy={y} r={4} fill="#fff" stroke={color} strokeWidth={2} /><text x={x + 6} y={y - 6} fontSize="11" fill={color} stroke="#fff" strokeWidth={3} paintOrder="stroke">{pi + 1}</text></g>; }); })}
             <text x={left + plotW} y={top + plotH + 24} fontSize="11" fill="#6b7280" textAnchor="end">Time (HH:MM)</text>
-            <text x={24} y={top + plotH / 2} fontSize="11" fill="#6b7280" textAnchor="middle" transform={`rotate(-90 24 ${top + plotH / 2})`}>Scaled value</text>
+            <text x={24} y={top + plotH / 2} fontSize="11" fill="#6b7280" textAnchor="middle" transform={`rotate(-90 24 ${top + plotH / 2})`}>{SHARED_AXIS_LABEL}</text>
           </svg>
           {selPhase && (() => {
             const { gi, pi } = selPhase;

@@ -36,6 +36,78 @@ const PREFERRED_MEASUREMENT_TABLES = [
 const PLAYBACK_STEP_MS = 250;
 const EDGE_RAMP_STEPS = 3;
 const CITY_CSV_DOWNLOAD_URL = "https://drive.google.com/drive/folders/1buBKSUWX2Svbk5Vlw58VfwaRszjJ3cVf?";
+const CITY_LOCATION_ROWS = [
+  {
+    code: "CN-PKX",
+    name: "Beijing",
+    country: "China",
+    timezone: "Asia/Shanghai",
+    latitude: "39.75 N",
+    longitude: "116.96 E",
+    altitude: "36",
+    environment: "urban",
+  },
+  {
+    code: "DE-BLN",
+    name: "Berlin",
+    country: "Germany",
+    timezone: "Europe/Berlin",
+    latitude: "52.51 N",
+    longitude: "13.33 E",
+    altitude: "35",
+    environment: "urban",
+  },
+  {
+    code: "ES-UGR",
+    name: "Granada",
+    country: "Spain",
+    timezone: "Europe/Madrid",
+    latitude: "37.18 N",
+    longitude: "3.62 W",
+    altitude: "680",
+    environment: "urban",
+  },
+  {
+    code: "FR-VLX",
+    name: "Vaulx-en-Velin",
+    country: "France",
+    timezone: "Europe/Paris",
+    latitude: "45.78 N",
+    longitude: "4.93 E",
+    altitude: "170",
+    environment: "urban",
+  },
+  {
+    code: "SG-SIN",
+    name: "Singapore",
+    country: "Singapore",
+    timezone: "Asia/Singapore",
+    latitude: "1.21 N",
+    longitude: "103.82 E",
+    altitude: "15",
+    environment: "urban",
+  },
+  {
+    code: "ES-MAD",
+    name: "Madrid",
+    country: "Spain",
+    timezone: "Europe/Madrid",
+    latitude: "40.42 N",
+    longitude: "3.70 W",
+    altitude: "667",
+    environment: "urban",
+  },
+  {
+    code: "US-ABQ",
+    name: "Albuquerque",
+    country: "United States",
+    timezone: "America/Denver",
+    latitude: "35.05 N",
+    longitude: "106.54 W",
+    altitude: "1656",
+    environment: "urban",
+  },
+] as const;
 
 type FilterKey = (typeof FILTER_KEYS)[number];
 type CoverageMode = "sparse" | "expanded";
@@ -1557,65 +1629,123 @@ export default function CitiesTab() {
 
   return (
     <div className="space-y-5">
-      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700 space-y-2">
-        <h3 className="text-lg font-semibold text-emerald-900">Cities Calibration</h3>
-        <p>
-          THIS IS STILL UNDER CONSTRUCTION! Choose either <strong>Cities</strong> or <strong>PSI spectrometer</strong>,
-          then upload that source file together with one room calibration CSV to fit a Faketron day profile.
-        </p>
-        {dataSource === "cities" ? (
-          <p>
-            The city CSV represents one average 24-hour day for a single city, split into 5-minute bins, for the
-            month that you select here. When available, the tool automatically uses the
-            <code className="mx-1">spectral_horizontal_irradiance</code>
-            slice from that monthly average-day file.
-          </p>
-        ) : (
-          <p>
-            The PSI mode expects a <code className="mx-1">PhotonFluxDensity.csv</code> export. Measurement timestamps,
-            start and end times, the interval between measurements, and the number of measurements may vary freely.
-            When duplicate timestamps appear, only the first measurement is kept and later duplicates are ignored.
-          </p>
-        )}
-        <p>
-          The workflow is: first the outdoor daylight spectrum is taken from the
-          {dataSource === "cities" ? " city dataset" : " PSI file"} for each time bin, then that spectrum is compared
-          against the measured lamp spectra of the detected room. The lamp calibration CSV contains Jeti measurements
-          of each lamp channel at known dimming percentages. The tool interpolates between those measurements,
-          reconstructs possible lamp spectra for 0-100%, and then fits the combination of indoor lamps that best
-          matches the outside spectral target at each time bin.
-        </p>
-        <p>
-          In practice this means the outside measurement is the spectral target, and the room calibration tells the
-          tool what each lamp channel can produce indoors. The fitting step converts that outdoor target into a Faketron
-          schedule by finding lamp percentages that minimize the spectral error, shown here as RMSE, within the nm
-          window you choose.
-        </p>
-        <p>
-          Most of the city daylight data used here comes from the SKYSPECTRA dataset:
-          <a
-            href="https://zenodo.org/records/8147546"
-            target="_blank"
-            rel="noreferrer"
-            className="ml-1 text-emerald-700 underline"
-          >
-            https://zenodo.org/records/8147546
-          </a>
-          .
-        </p>
-        <p>
-          <strong>SKYSPECTRA: an opensource data package for worldwide spectral daylight</strong> is described there as
-          an open-source data package of worldwide spectral daylight measurements collected from multiple long-term
-          sites and specific experiments. For research use, cite: Balakrishnan, P., Diakite-Kortlever, A., Dumortier,
-          D., Hernandez-Andres, J., Kenny, P., Maskarenj, M., Pierson, C., Thorseth, A., Xue, P., &amp; Knoop, M.
-          (2023). <em>SKYSPECTRA: An Opensource Data Package of Worldwide Spectral Daylight</em>, Proceedings of the
-          30th session of the CIE Conference, Ljubljana, Slovenia. DOI:10.25039/x50.2023.OP026.
-        </p>
-        <p>
-          The dataset documentation also notes that this project was funded by the European Union's Horizon 2020
-          research and innovation programme under the Marie Sklodowska-Curie Individual Fellowship, grant agreement
-          No. 101032279.
-        </p>
+      <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.95fr)]">
+          <div className="space-y-2">
+            <h3 className="text-lg font-semibold text-emerald-900">Cities Calibration</h3>
+            <p>
+              THIS IS STILL UNDER CONSTRUCTION! Choose either <strong>Cities</strong> or <strong>PSI spectrometer</strong>,
+              then upload that source file together with one room calibration CSV to fit a Faketron day profile.
+            </p>
+            {dataSource === "cities" ? (
+              <p>
+                The city CSV contains one average 24-hour day for one city, split into 5-minute bins, for the month you
+                select here. When available, the tool automatically uses the
+                <code className="mx-1">spectral_horizontal_irradiance</code>
+                slice from that file.
+              </p>
+            ) : (
+              <p>
+                PSI mode expects a <code className="mx-1">PhotonFluxDensity.csv</code> export. Timestamps and intervals may
+                vary. If the file contains duplicate timestamps, only the first one is kept.
+              </p>
+            )}
+            <p>
+              For each time bin, the spectrum from the {dataSource === "cities" ? "city dataset" : "PSI file"} is the{" "}
+              <strong>target spectrum</strong>. The room calibration CSV contains measured spectra for each lamp channel at
+              known dimming percentages, and the tool interpolates those measurements to estimate each channel from 0-100%.
+            </p>
+            <p>
+              The fitter then chooses lamp percentages whose summed lamp output is as close as possible to that target
+              within the selected nm range. That summed indoor lamp output is the <strong>reconstructed spectrum</strong>,
+              and the remaining mismatch is shown as RMSE.
+            </p>
+            <p>
+              <strong>All cities:</strong> Madrid: Nofuentes, G. (n.d.). Dataset for "Overirradiance conditions and their
+              impact on the spectral distribution at low- and mid-latitude sites", <em>Solar Energy</em>, Volume 259,
+              2023, Pages 99-106, https://doi.org/10.1016/j.solener.2023.05.010.
+              <a
+                href="https://doi.org/10.5281/ZENODO.18169082"
+                target="_blank"
+                rel="noreferrer"
+                className="ml-1 text-emerald-700 underline"
+              >
+                https://doi.org/10.5281/ZENODO.18169082
+              </a>
+            </p>
+            <p>
+              <strong>USA New Mexico:</strong> Global Horizontal Spectral irradiance dataset from Albuquerque - PV
+              Performance Modeling Collaborative (PVPMC). (n.d.). Retrieved April 24, 2026, from
+              <a
+                href="https://pvpmc.sandia.gov/datasets/spectral-irradiance-dataset-from-albuquerque/"
+                target="_blank"
+                rel="noreferrer"
+                className="ml-1 text-emerald-700 underline"
+              >
+                https://pvpmc.sandia.gov/datasets/spectral-irradiance-dataset-from-albuquerque/
+              </a>
+            </p>
+            <p>
+              <strong>All other cities data comes from:</strong> SKYSPECTRA: an opensource data package for worldwide
+              spectral daylight is described there as an open-source data package of worldwide spectral daylight
+              measurements collected from multiple long-term sites and specific experiments. For research use, cite:
+              Balakrishnan, P., Diakite-Kortlever, A., Dumortier, D., Hernandez-Andres, J., Kenny, P., Maskarenj, M.,
+              Pierson, C., Thorseth, A., Xue, P., &amp; Knoop, M. (2023). SKYSPECTRA: An Opensource Data Package of
+              Worldwide Spectral Daylight, Proceedings of the 30th session of the CIE Conference, Ljubljana, Slovenia.
+              DOI:10.25039/x50.2023.OP026.
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm shadow-emerald-100/60 self-start">
+            <div className="border-b border-emerald-100 bg-gradient-to-br from-emerald-100 via-teal-50 to-white px-4 py-3">
+              <div className="text-sm font-semibold text-emerald-900">Available City Locations</div>
+              <div className="mt-1 text-xs text-slate-600">
+                Hardcoded overview of the city datasets currently referenced in this tab.
+              </div>
+            </div>
+            <div className="max-h-[420px] overflow-auto">
+              <table className="min-w-full border-separate border-spacing-0 text-xs text-slate-700">
+                <thead className="sticky top-0 z-10">
+                  <tr className="bg-slate-900 text-left text-[11px] uppercase tracking-[0.08em] text-white">
+                    <th className="px-3 py-2 font-semibold">Code</th>
+                    <th className="px-3 py-2 font-semibold">Location</th>
+                    <th className="px-3 py-2 font-semibold">Country</th>
+                    <th className="px-3 py-2 font-semibold">Timezone</th>
+                    <th className="px-3 py-2 font-semibold">Lat</th>
+                    <th className="px-3 py-2 font-semibold">Lon</th>
+                    <th className="px-3 py-2 font-semibold">Alt</th>
+                    <th className="px-3 py-2 font-semibold">Env</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {CITY_LOCATION_ROWS.map((row, index) => (
+                    <tr
+                      key={row.code}
+                      className={index % 2 === 0 ? "bg-white" : "bg-emerald-50/55"}
+                    >
+                      <td className="border-b border-slate-100 px-3 py-2 align-top">
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-900">
+                          {row.code}
+                        </span>
+                      </td>
+                      <td className="border-b border-slate-100 px-3 py-2 font-medium text-slate-900">{row.name}</td>
+                      <td className="border-b border-slate-100 px-3 py-2">{row.country}</td>
+                      <td className="border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-600">{row.timezone}</td>
+                      <td className="border-b border-slate-100 px-3 py-2">{row.latitude}</td>
+                      <td className="border-b border-slate-100 px-3 py-2">{row.longitude}</td>
+                      <td className="border-b border-slate-100 px-3 py-2">{row.altitude} m</td>
+                      <td className="border-b border-slate-100 px-3 py-2">
+                        <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-slate-700">
+                          {row.environment}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
@@ -1764,7 +1894,8 @@ export default function CitiesTab() {
                 <option value="reconstructed">Reconstructed spectrum</option>
               </select>
               <div className="mt-1 text-xs text-slate-500">
-                Choose whether the spectral chart shows the source target, the reconstructed Faketron fit, or both together.
+                Target = uploaded daylight/PSI spectrum for this time bin. Reconstructed = summed room-lamp spectrum at
+                the fitted percentages.
               </div>
             </div>
           </div>
@@ -1792,7 +1923,7 @@ export default function CitiesTab() {
           </div>
 
           <div className="text-xs text-slate-500">
-            The selected nm window changes the calibration fit, the plotted spectra, and the fit metrics. Default: 400-750 nm.
+            The selected nm window is the wavelength range used for fitting, plotting, and RMSE. Default: 400-750 nm.
           </div>
 
           {scopedRows.length > 0 && selectedMonth != null ? (
