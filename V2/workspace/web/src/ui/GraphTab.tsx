@@ -430,7 +430,7 @@ export default function GraphTab() {
 
   const parts = protocol?.sections?.[0]?.parts || [];
   useEffect(() => {
-    const all = new Set(parts.map((_: any, i: number) => i));
+    const all = new Set<number>(parts.map((_: any, i: number) => i));
     setVisible((prev) => {
       const next = new Set<number>();
       all.forEach((i) => { if (prev.has(i)) next.add(i); });

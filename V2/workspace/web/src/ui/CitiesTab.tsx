@@ -1121,6 +1121,7 @@ function buildTemperatureFollowPoints(
 }
 
 export default function CitiesTab() {
+  const profile = useProto((s: any) => s.profile) as ProfileKey | undefined;
   const protocol = useProto((s: any) => s.protocol) as Protocol;
   const setProtocol = useProto((s: any) => s.setProtocol);
   const setProfile = useProto((s: any) => s.setProfile);

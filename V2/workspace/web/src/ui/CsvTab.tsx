@@ -437,7 +437,7 @@ export default function CsvPhaseAnalyzer() {
   const roomLampSummary = roomConfig?.channels.map((channel) => channel.label).join(", ") ?? "";
 
   const targetOptions = useMemo<CsvTargetOption[]>(() => {
-    const sourceParts = protocolParts.length ? protocolParts : PROFILES[profile]?.groups ?? [];
+    const sourceParts: any[] = protocolParts.length ? protocolParts : PROFILES[profile]?.groups ?? [];
     const lampGroups = new Set(
       roomConfig?.channels.map((channel) => channel.protocolGroupName) ?? [],
     );
@@ -455,8 +455,8 @@ export default function CsvPhaseAnalyzer() {
           isLamp: lampGroups.has(name),
         };
       })
-      .filter((option): option is CsvTargetOption => option !== null)
-      .sort((a, b) => a.name.localeCompare(b.name));
+      .filter((option: CsvTargetOption | null): option is CsvTargetOption => option !== null)
+      .sort((a: CsvTargetOption, b: CsvTargetOption) => a.name.localeCompare(b.name));
   }, [protocolParts, profile, roomConfig]);
 
   const combinedDetectedColumns = useMemo(
@@ -543,7 +543,7 @@ export default function CsvPhaseAnalyzer() {
     const range = getInputRange(target.rangeKey, profile);
 
     if (target.rangeKey === "Temperature") {
-      return Math.round(v * range.scale);
+      return Math.round(v * (range.scale ?? 1));
     }
 
     let next = range.int ? Math.round(v) : v;

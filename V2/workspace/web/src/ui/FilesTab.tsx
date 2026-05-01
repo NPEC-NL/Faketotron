@@ -24,7 +24,9 @@ function downloadText(name: string, text: string, mime = "application/json") {
   a.click();
 }
 function downloadBytes(name: string, bytes: Uint8Array) {
-  const blob = new Blob([bytes], { type: "application/octet-stream" });
+  const copy = new Uint8Array(bytes.byteLength);
+  copy.set(bytes);
+  const blob = new Blob([copy.buffer as ArrayBuffer], { type: "application/octet-stream" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
   a.download = name;
