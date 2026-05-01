@@ -59,17 +59,17 @@ type CompareResults = {
 // Constants
 // ---------------------------------------------------------------------------
 
-const STEP_MS = 5 * 60 * 1000; // 5-minute chart resolution
+const MIN_CHART_SPAN_MS = 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_SECONDS = 24 * 60 * 60;
 const HOUR_SECONDS = 60 * 60;
 const DAY_WINDOW_STEP_SECONDS = 60;
+const MAX_LINE_GAP_MS = 15 * 60 * 1000;
+const GAP_SEGMENT_MARKER = "__gapseg_";
 const SHARED_AXIS_NOTE = "Shared y-axis: most parameters are shown directly as intensity [%]. CO2 and temperature are divided by 10 on the graph, so all parameters can stay visible together on one overview without the larger CO2 and temperature values dominating the axis scale.";
 const SHARED_AXIS_LABEL = "Intensity [%] (except: CO2,CÂ°/10)";
 const STANDARD_AXIS_LABEL = "Shared axis (CO2 and Light /10)";
 const STANDARD_AXIS_NOTE = "Temperature and RH are shown directly. CO2 and Light are divided by 10 on the axis so the standard variables can stay visible together. Tooltips show the original values.";
-const MATCH_WINDOW_MS = STEP_MS; // ±5 min window for sensor matching
-
 const STANDARD_SHEET_KEYS: Record<string, string> = {
   t: "T",
   li: "LI",
@@ -188,6 +188,44 @@ function buildStandardChartData(params: ParamResult[], startMs: number, endMs: n
     });
   });
   return Array.from(byTime.values()).sort((a, b) => Number(a.xMs) - Number(b.xMs));
+}
+
+type LineSegment = { dataKey: string; sourceKey: string; segmentIndex: number };
+
+function segmentedDataKey(sourceKey: string, segmentIndex: number): string {
+  return `${sourceKey}${GAP_SEGMENT_MARKER}${segmentIndex}`;
+}
+
+function sourceKeyFromSegmented(dataKey: string): string {
+  const markerIndex = dataKey.lastIndexOf(GAP_SEGMENT_MARKER);
+  return markerIndex >= 0 ? dataKey.slice(0, markerIndex) : dataKey;
+}
+
+function splitLineGaps(data: Array<Record<string, any>>, sourceKeys: string[]) {
+  const rows = data.map((row) => ({ ...row }));
+  const segmentsBySource = new Map<string, LineSegment[]>();
+
+  sourceKeys.forEach((sourceKey) => {
+    const segments: LineSegment[] = [];
+    let lastX: number | null = null;
+    let segmentIndex = -1;
+
+    rows.forEach((row) => {
+      const xMs = Number(row.xMs);
+      const value = row[sourceKey];
+      if (!Number.isFinite(xMs) || value == null) return;
+      if (lastX == null || xMs - lastX > MAX_LINE_GAP_MS) {
+        segmentIndex += 1;
+        segments.push({ dataKey: segmentedDataKey(sourceKey, segmentIndex), sourceKey, segmentIndex });
+      }
+      row[segmentedDataKey(sourceKey, segmentIndex)] = value;
+      lastX = xMs;
+    });
+
+    segmentsBySource.set(sourceKey, segments);
+  });
+
+  return { data: rows, segmentsBySource };
 }
 
 function colorForExtra(name: string, index: number): string {
@@ -437,44 +475,37 @@ function groupToChannelKey(name: string, room: RoomConfig): string | null {
 /**
  * Parse an XLSX worksheet to {ts, value} pairs.
  *
- * Both "Measuring Date" (col C) and "Measuring Time" (col D) contain the same
- * full datetime serial — use only col C, ignore col D.
+ * Measuring Time (col D) is the plotted timestamp. If an export stores only
+ * a time fraction there, combine it with the date serial from col C.
  */
 function parseSheetToSeries(ws: XLSX.WorkSheet): SensorPoint[] {
+  // Use Measuring Time (col D) as-is; do not resample probe data onto a fixed grid.
   const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: null });
   const points: SensorPoint[] = [];
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length < 6) continue;
-    const dateRaw = row[2]; // col C: full datetime serial
+    const dateRaw = row[2]; // col C: Measuring Date
+    const timeRaw = row[3]; // col D: Measuring Time
     const valueRaw = row[5]; // col F: measured value
-    if (typeof dateRaw !== "number" || typeof valueRaw !== "number") continue;
-    const ts = excelSerialToMs(dateRaw);
+    if (typeof valueRaw !== "number") continue;
+    let serial: number | null = null;
+    if (typeof timeRaw === "number") {
+      serial = timeRaw >= 1
+        ? timeRaw
+        : typeof dateRaw === "number"
+          ? Math.floor(dateRaw) + timeRaw
+          : null;
+    } else if (typeof dateRaw === "number") {
+      serial = dateRaw;
+    }
+    if (serial == null) continue;
+    const ts = excelSerialToMs(serial);
     if (!isFinite(ts)) continue;
     points.push({ ts, value: valueRaw });
   }
   points.sort((a, b) => a.ts - b.ts);
   return points;
-}
-
-/** Return the average of sensor readings within ±windowMs of targetMs, or null. */
-function avgSensorValue(sorted: SensorPoint[], targetMs: number, windowMs: number): number | null {
-  if (!sorted.length) return null;
-  // Binary search for first point >= targetMs - windowMs
-  const lo_bound = targetMs - windowMs;
-  const hi_bound = targetMs + windowMs;
-  let lo = 0, hi = sorted.length - 1;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (sorted[mid].ts < lo_bound) lo = mid + 1;
-    else hi = mid;
-  }
-  let sum = 0, count = 0;
-  for (let i = lo; i < sorted.length && sorted[i].ts <= hi_bound; i++) {
-    sum += sorted[i].value;
-    count++;
-  }
-  return count ? sum / count : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -525,41 +556,49 @@ export default function ExperimentCheckTab() {
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CompareResults | null>(null);
   const [extraSheets, setExtraSheets] = useState<Set<string>>(new Set());
+  const [extraZoom, setExtraZoom] = useState(1);
+  const [extraScroll, setExtraScroll] = useState(0);
   const [standardVisible, setStandardVisible] = useState<Set<string>>(new Set(["T", "LI", "CO2", "Rh"]));
   const [standardZoom, setStandardZoom] = useState(1);
   const [standardScroll, setStandardScroll] = useState(0);
+  const [standardDayIndex, setStandardDayIndex] = useState(0);
   const [visible, setVisible] = useState<Set<number>>(new Set());
   const [zoom, setZoom] = useState<number>(1);
   const [scroll, setScroll] = useState<number>(0);
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const [selPhase, setSelPhase] = useState<{ gi: number; pi: number } | null>(null);
   const [dayIndex, setDayIndex] = useState(0);
+  const startDateInputRef = useRef<HTMLInputElement | null>(null);
+  const endDateInputRef = useRef<HTMLInputElement | null>(null);
 
   const roomConfig = ROOM_CONFIGS[room];
+
+  function setDateInputValues(nextStartDT: string, nextEndDT: string) {
+    setStartDT(nextStartDT);
+    setEndDT(nextEndDT);
+    if (startDateInputRef.current) startDateInputRef.current.value = nextStartDT;
+    if (endDateInputRef.current) endDateInputRef.current.value = nextEndDT;
+  }
 
   async function onPickSensor() {
     try {
       const f = await pickFile(".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       setSensorFileName(f.name);
       setSensorFileRef(f);
-      // Parse immediately to cache workbook and auto-fill date range
-      try {
-        const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: false });
-        setParsedWorkbook(wb);
-        // Find date range from the first standard sheet that has data
-        for (const sheetName of wb.SheetNames) {
-          if (!normalizeSheetName(sheetName)) continue;
-          const pts = parseSheetToSeries(wb.Sheets[sheetName]);
-          if (pts.length >= 2) {
-            setStartDT(msToDateInput(pts[0].ts));
-            setEndDT(msToDateInput(pts[pts.length - 1].ts));
-            break;
-          }
+      // Parse immediately to cache workbook and auto-fill date range.
+      const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: false });
+      setParsedWorkbook(wb);
+      for (const sheetName of wb.SheetNames) {
+        if (!normalizeSheetName(sheetName)) continue;
+        const pts = parseSheetToSeries(wb.Sheets[sheetName]);
+        if (pts.length >= 2) {
+          setDateInputValues(msToDateInput(pts[0].ts), msToDateInput(pts[pts.length - 1].ts));
+          break;
         }
-      } catch (e: any) {
-        console.warn("[ExperimentCheck] Pre-parse failed:", e?.message);
       }
-    } catch { /* cancelled */ }
+    } catch (e: any) {
+      if (e?.message !== "No file") console.warn("[ExperimentCheck] Pre-parse failed:", e?.message);
+    }
   }
 
   async function onPickProtocol() {
@@ -567,28 +606,37 @@ export default function ExperimentCheckTab() {
       const f = await pickFile(".fyt,application/octet-stream");
       if (!f.name.toLowerCase().endsWith(".fyt")) {
         setError("Please upload a .fyt protocol file.");
+        setProtocolFileName("");
+        setProtocolFileRef(null);
         return;
       }
-      setProtocolFileName(f.name); setProtocolFileRef(f);
+      setError(null);
+      setProtocolFileName(f.name);
+      setProtocolFileRef(f);
     } catch { /* cancelled */ }
   }
 
   async function onPickCalib() {
     try {
       const f = await pickFile(".csv,text/csv,text/plain");
-      setCalibFileName(f.name); setCalibFileRef(f);
+      setCalibFileName(f.name);
+      setCalibFileRef(f);
     } catch { /* cancelled */ }
   }
 
   async function onCompare() {
     setError(null);
-    if (!sensorFileRef || !protocolFileRef || !calibFileRef || !startDT || !endDT) {
+    const selectedStartDT = startDateInputRef.current?.value || startDT;
+    const selectedEndDT = endDateInputRef.current?.value || endDT;
+    if (!sensorFileRef || !protocolFileRef || !calibFileRef || !selectedStartDT || !selectedEndDT) {
       setError("Please upload sensor data, protocol, and lamp calibration files, and set start/end datetime.");
       return;
     }
-    const startMs = dateInputStartToMs(startDT);
-    const endMs   = dateInputEndToMs(endDT);
+    const startMs = dateInputStartToMs(selectedStartDT);
+    const endMs   = dateInputEndToMs(selectedEndDT);
     if (endMs <= startMs) { setError("End datetime must be after start."); return; }
+    setStartDT(selectedStartDT);
+    setEndDT(selectedEndDT);
 
     setLoading(true);
     try {
@@ -650,24 +698,43 @@ export default function ExperimentCheckTab() {
         return g.xy;
       }
 
+      function protocolValueAt(protXY: XY[], tMs: number): number | null {
+        const tSec = (tMs - startMs) / 1000;
+        if (tSec < 0 || tSec > totalProtocolSec || !protXY.length) return null;
+        return yAt(protXY, tSec % maxBase);
+      }
+
+      function protocolTimestamps(seriesList: XY[][]): number[] {
+        const times = new Set<number>();
+        seriesList.forEach((series) => {
+          series.forEach((point) => {
+            for (let repeatIndex = 0; repeatIndex < protocolRepeat; repeatIndex++) {
+              const tMs = startMs + (repeatIndex * maxBase + point.x) * 1000;
+              if (tMs >= startMs && tMs <= endMs) times.add(tMs);
+            }
+          });
+        });
+        return Array.from(times).sort((a, b) => a - b);
+      }
+
       function buildRows(protXY: XY[], sensorPts: SensorPoint[]): ChartRow[] {
-        const rows: ChartRow[] = [];
-        for (let tMs = startMs; tMs <= endMs; tMs += STEP_MS) {
-          const tSec = (tMs - startMs) / 1000;
-          let protVal: number | null = null;
-          if (tSec <= totalProtocolSec && protXY.length) {
-            protVal = yAt(protXY, tSec % maxBase);
-          }
-          rows.push({ xMs: tMs, protocol: protVal, sensor: avgSensorValue(sensorPts, tMs, MATCH_WINDOW_MS) });
-        }
-        return rows;
+        const rawSensor = sensorPts.filter((point) => point.ts >= startMs && point.ts <= endMs);
+        const times = rawSensor.length ? rawSensor.map((point) => point.ts) : protocolTimestamps([protXY]);
+        const sensorByTime = new Map(rawSensor.map((point) => [point.ts, point.value]));
+        return times.map((tMs) => ({
+          xMs: tMs,
+          protocol: protocolValueAt(protXY, tMs),
+          sensor: sensorByTime.get(tMs) ?? null,
+        }));
       }
 
       function buildLIRows(): ChartRow[] {
         const lampGroups = groupSeries.filter((gs) => groupToParam(gs.name) === "lamp");
         const liSensor = standardSensor["LI"] ?? [];
-        const rows: ChartRow[] = [];
-        for (let tMs = startMs; tMs <= endMs; tMs += STEP_MS) {
+        const rawSensor = liSensor.filter((point) => point.ts >= startMs && point.ts <= endMs);
+        const times = rawSensor.length ? rawSensor.map((point) => point.ts) : protocolTimestamps(lampGroups.map((group) => group.xy));
+        const sensorByTime = new Map(rawSensor.map((point) => [point.ts, point.value]));
+        return times.map((tMs) => {
           const tSec = (tMs - startMs) / 1000;
           let protVal: number | null = null;
           if (tSec <= totalProtocolSec && lampGroups.length) {
@@ -681,9 +748,8 @@ export default function ExperimentCheckTab() {
             const spectrum = convertSpectrumToUmol(reconstructSpectrum(calData, percents));
             protVal = integrateSpectrum(spectrum, 400, 700);
           }
-          rows.push({ xMs: tMs, protocol: protVal, sensor: avgSensorValue(liSensor, tMs, MATCH_WINDOW_MS) });
-        }
-        return rows;
+          return { xMs: tMs, protocol: protVal, sensor: sensorByTime.get(tMs) ?? null };
+        });
       }
 
       // --- Assemble results ---
@@ -722,6 +788,7 @@ export default function ExperimentCheckTab() {
       setStandardVisible(new Set(standard.filter((p) => p.hasProtocol || p.hasSensor).map((p) => p.key)));
       setStandardZoom(1);
       setStandardScroll(0);
+      setStandardDayIndex(0);
       setVisible(new Set(protocolRows.map((_, idx) => idx)));
       setZoom(1);
       setScroll(0);
@@ -729,6 +796,8 @@ export default function ExperimentCheckTab() {
       setSelPhase(null);
       setDayIndex(0);
       setExtraSheets(new Set());
+      setExtraZoom(1);
+      setExtraScroll(0);
     } catch (e: any) {
       setError(`Error: ${e?.message ?? String(e)}`);
     } finally {
@@ -755,25 +824,55 @@ export default function ExperimentCheckTab() {
     });
   }
 
-  const canCompare = !loading && !!sensorFileRef && !!protocolFileRef && !!calibFileRef && !!startDT && !!endDT;
-  const standardAvailable = results?.standard.filter((p) => p.hasProtocol || p.hasSensor) ?? [];
-  const selectedStandard = standardAvailable.filter((p) => standardVisible.has(p.key));
-  const standardSpanMs = results ? Math.max(STEP_MS, results.endMs - results.startMs) : STEP_MS;
+  const canCompare = !loading && !!sensorFileRef && !!protocolFileRef && !!calibFileRef;
+  const standardAvailable = useMemo(
+    () => results?.standard.filter((p) => p.hasProtocol || p.hasSensor) ?? [],
+    [results],
+  );
+  const selectedStandard = useMemo(
+    () => standardAvailable.filter((p) => standardVisible.has(p.key)),
+    [standardAvailable, standardVisible],
+  );
+  const standardSpanMs = results ? Math.max(MIN_CHART_SPAN_MS, results.endMs - results.startMs) : MIN_CHART_SPAN_MS;
+  const standardTotalDays = results ? Math.max(1, Math.ceil(standardSpanMs / DAY_MS)) : 1;
+  const safeStandardDayIndex = clamp(standardDayIndex, 0, Math.max(0, standardTotalDays - 1));
   const standardWindowMs = standardSpanMs / Math.max(1, standardZoom);
   const standardDomainStart = results ? results.startMs + Math.min(standardScroll, 1) * Math.max(0, standardSpanMs - standardWindowMs) : 0;
-  const standardDomainEnd = standardDomainStart + standardWindowMs;
+  const standardDomainEnd = results ? Math.min(results.endMs, standardDomainStart + standardWindowMs) : standardDomainStart + standardWindowMs;
   const standardChartData = useMemo(
     () => results ? buildStandardChartData(standardAvailable, results.startMs, results.endMs) : [],
     [results, standardAvailable],
   );
-  const standardWindowTicks = results ? generateXTicks(standardDomainStart, standardDomainEnd) : [];
-  const firstDayEndMs = results ? Math.min(results.endMs, results.startMs + DAY_MS) : 0;
-  const firstDayChartData = useMemo(
-    () => results ? buildStandardChartData(standardAvailable, results.startMs, firstDayEndMs) : [],
-    [results, standardAvailable, firstDayEndMs],
+  const standardLineKeys = useMemo(
+    () => standardAvailable.flatMap((p) => [
+      ...(p.hasProtocol ? [standardLineKey("protocol", p.key)] : []),
+      ...(p.hasSensor ? [standardLineKey("sensor", p.key)] : []),
+    ]),
+    [standardAvailable],
   );
-  const firstDayTicks = results ? generateXTicks(results.startMs, firstDayEndMs) : [];
-  const extraSelected = results?.restSheets.filter((name) => extraSheets.has(name)) ?? [];
+  const segmentedStandardChart = useMemo(
+    () => splitLineGaps(standardChartData, standardLineKeys),
+    [standardChartData, standardLineKeys],
+  );
+  const standardWindowTicks = results ? generateXTicks(standardDomainStart, standardDomainEnd) : [];
+  const standardDayStartMs = results ? results.startMs + safeStandardDayIndex * DAY_MS : 0;
+  const standardDayEndMs = results ? Math.min(results.endMs, standardDayStartMs + DAY_MS) : 0;
+  const standardDayChartData = useMemo(
+    () => results ? buildStandardChartData(standardAvailable, standardDayStartMs, standardDayEndMs) : [],
+    [results, standardAvailable, standardDayStartMs, standardDayEndMs],
+  );
+  const segmentedStandardDayChart = useMemo(
+    () => splitLineGaps(standardDayChartData, standardLineKeys),
+    [standardDayChartData, standardLineKeys],
+  );
+  const standardDayTicks = results ? generateXTicks(standardDayStartMs, standardDayEndMs) : [];
+  const extraWindowMs = standardSpanMs / Math.max(1, extraZoom);
+  const extraDomainStart = results ? results.startMs + Math.min(extraScroll, 1) * Math.max(0, standardSpanMs - extraWindowMs) : 0;
+  const extraDomainEnd = results ? Math.min(results.endMs, extraDomainStart + extraWindowMs) : extraDomainStart + extraWindowMs;
+  const extraSelected = useMemo(
+    () => results?.restSheets.filter((name) => extraSheets.has(name)) ?? [],
+    [results, extraSheets],
+  );
   const extraDefs = useMemo(
     () => extraSelected.map((name) => {
       const index = results?.restSheets.indexOf(name) ?? 0;
@@ -787,17 +886,22 @@ export default function ExperimentCheckTab() {
       ...def,
       points: results.workbook.Sheets[def.name] ? parseSheetToSeries(results.workbook.Sheets[def.name]) : [],
     }));
-    const rows: Array<Record<string, any>> = [];
-    for (let tMs = results.startMs; tMs <= results.endMs; tMs += STEP_MS) {
-      const row: Record<string, any> = { xMs: tMs };
-      parsed.forEach((def) => {
-        row[def.key] = avgSensorValue(def.points, tMs, MATCH_WINDOW_MS);
+    const byTime = new Map<number, Record<string, any>>();
+    parsed.forEach((def) => {
+      def.points.forEach((point) => {
+        if (point.ts < results.startMs || point.ts > results.endMs) return;
+        const row = byTime.get(point.ts) ?? { xMs: point.ts };
+        row[def.key] = point.value;
+        byTime.set(point.ts, row);
       });
-      rows.push(row);
-    }
-    return rows;
+    });
+    return Array.from(byTime.values()).sort((a, b) => Number(a.xMs) - Number(b.xMs));
   }, [results, extraDefs]);
-  const extraTicks = results ? generateXTicks(results.startMs, results.endMs) : [];
+  const segmentedExtraChart = useMemo(
+    () => splitLineGaps(extraChartData, extraDefs.map((def) => def.key)),
+    [extraChartData, extraDefs],
+  );
+  const extraTicks = results ? generateXTicks(extraDomainStart, extraDomainEnd) : [];
   const xTicks = results ? generateXTicks(results.startMs, results.endMs) : [];
   const protocolParts = results?.protocol?.sections?.[0]?.parts ?? [];
   const protocolRows = results?.protocolRows ?? [];
@@ -808,8 +912,9 @@ export default function ExperimentCheckTab() {
   const xMax = xMin + xWindow;
 
   useEffect(() => {
+    setStandardDayIndex((prev) => clamp(prev, 0, Math.max(0, standardTotalDays - 1)));
     setDayIndex((prev) => clamp(prev, 0, Math.max(0, totalDays - 1)));
-  }, [totalDays]);
+  }, [standardTotalDays, totalDays]);
 
   const frozenYRangeRef = useRef<{ ymin: number; ymax: number; span: number } | null>(null);
   useEffect(() => {
@@ -943,18 +1048,26 @@ export default function ExperimentCheckTab() {
     );
   }
 
-  function renderStandardLines(params: ParamResult[]) {
+  function renderStandardLines(params: ParamResult[], segmentsBySource: Map<string, LineSegment[]>) {
     return params.flatMap((p) => {
       const lines: React.ReactNode[] = [];
       if (p.hasProtocol) {
-        lines.push(
-          <Line key={standardLineKey("protocol", p.key)} dataKey={standardLineKey("protocol", p.key)} name={`${p.title} Protocol`} stroke={p.protocolColor} strokeWidth={1.5} strokeDasharray="6 3" dot={false} isAnimationActive={false} connectNulls={false} />,
-        );
+        const sourceKey = standardLineKey("protocol", p.key);
+        const segments = segmentsBySource.get(sourceKey) ?? [];
+        segments.forEach((segment, index) => {
+          lines.push(
+            <Line key={segment.dataKey} dataKey={segment.dataKey} name={`${p.title} Protocol`} stroke={p.protocolColor} strokeWidth={1.5} strokeDasharray="6 3" dot={false} isAnimationActive={false} connectNulls={true} legendType={index === 0 ? "line" : "none"} />,
+          );
+        });
       }
       if (p.hasSensor) {
-        lines.push(
-          <Line key={standardLineKey("sensor", p.key)} dataKey={standardLineKey("sensor", p.key)} name={`${p.title} Measured`} stroke={p.sensorColor} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={true} />,
-        );
+        const sourceKey = standardLineKey("sensor", p.key);
+        const segments = segmentsBySource.get(sourceKey) ?? [];
+        segments.forEach((segment, index) => {
+          lines.push(
+            <Line key={segment.dataKey} dataKey={segment.dataKey} name={`${p.title} Measured`} stroke={p.sensorColor} strokeWidth={2} dot={false} isAnimationActive={false} connectNulls={true} legendType={index === 0 ? "line" : "none"} />,
+          );
+        });
       }
       return lines;
     });
@@ -962,7 +1075,7 @@ export default function ExperimentCheckTab() {
 
   function formatStandardTooltip(val: any, _name: string, item: any) {
     if (val == null) return ["-", _name];
-    const dataKey = String(item?.dataKey ?? "");
+    const dataKey = sourceKeyFromSegmented(String(item?.dataKey ?? ""));
     const [, kind, key] = dataKey.match(/^(protocol|sensor)_(.+)$/) ?? [];
     const p = standardAvailable.find((candidate) => candidate.key === key);
     const actual = Number(val) * standardAxisScale(key);
@@ -1002,13 +1115,13 @@ export default function ExperimentCheckTab() {
         </div>
         <div style={{ width: "100%", height: 360 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={standardChartData} margin={{ top: 12, right: 24, left: 42, bottom: 12 }}>
+            <LineChart data={segmentedStandardChart.data} margin={{ top: 12, right: 24, left: 42, bottom: 12 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="xMs" type="number" scale="time" domain={[standardDomainStart, standardDomainEnd]} ticks={standardWindowTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} />
+              <XAxis dataKey="xMs" type="number" scale="time" domain={[standardDomainStart, standardDomainEnd]} ticks={standardWindowTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} allowDataOverflow />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => formatAxisTick(Number(value))} label={{ value: STANDARD_AXIS_LABEL, angle: -90, position: "insideLeft", dx: -8, dy: 72, style: { fontSize: 11 } }} />
               <Tooltip labelFormatter={(v) => fmtAbsTime(Number(v))} formatter={formatStandardTooltip} />
               <Legend />
-              {renderStandardLines(selectedStandard)}
+              {renderStandardLines(selectedStandard, segmentedStandardChart.segmentsBySource)}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -1023,16 +1136,23 @@ export default function ExperimentCheckTab() {
   function renderFirstDayChart() {
     if (!results || !standardAvailable.length) return null;
     return (
-      <SectionCard title="24-Hour Graph" subtitle={`Uses the filled-in experiment start as the starting time: ${fmtAbsTime(results.startMs)}. The graph stops at the probe end time if the probe range is shorter than 24 hours.`}>
+      <SectionCard title="24-Hour Graph" subtitle={`Single-day comparison view. Experiment span: ${fmtDurationWindow(standardSpanMs)} (${standardTotalDays} day${standardTotalDays === 1 ? "" : "s"}).`}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center", marginBottom: 12 }}>
+          <button className="btn" onClick={() => setStandardDayIndex((prev) => clamp(prev - 1, 0, standardTotalDays - 1))} disabled={safeStandardDayIndex === 0}>Previous day</button>
+          <button className="btn" onClick={() => setStandardDayIndex((prev) => clamp(prev + 1, 0, standardTotalDays - 1))} disabled={safeStandardDayIndex >= standardTotalDays - 1}>Next day</button>
+          <div style={{ minWidth: 120, fontWeight: 600, color: "#0f172a" }}>{dayLabel(safeStandardDayIndex)}</div>
+          <input type="range" min={0} max={Math.max(0, standardTotalDays - 1)} step={1} value={safeStandardDayIndex} onChange={(event) => setStandardDayIndex(Number(event.target.value))} style={{ flex: "1 1 320px" }} />
+          <div className="muted small">Window: {fmtAbsTime(standardDayStartMs)} -&gt; {fmtAbsTime(standardDayEndMs)}</div>
+        </div>
         <div style={{ width: "100%", height: 320 }}>
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={firstDayChartData} margin={{ top: 12, right: 24, left: 42, bottom: 12 }}>
+            <LineChart data={segmentedStandardDayChart.data} margin={{ top: 12, right: 24, left: 42, bottom: 12 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-              <XAxis dataKey="xMs" type="number" scale="time" domain={[results.startMs, firstDayEndMs]} ticks={firstDayTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} />
+              <XAxis dataKey="xMs" type="number" scale="time" domain={[standardDayStartMs, standardDayEndMs]} ticks={standardDayTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} allowDataOverflow />
               <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => formatAxisTick(Number(value))} label={{ value: STANDARD_AXIS_LABEL, angle: -90, position: "insideLeft", dx: -8, dy: 72, style: { fontSize: 11 } }} />
               <Tooltip labelFormatter={(v) => fmtAbsTime(Number(v))} formatter={formatStandardTooltip} />
               <Legend />
-              {renderStandardLines(selectedStandard)}
+              {renderStandardLines(selectedStandard, segmentedStandardDayChart.segmentsBySource)}
             </LineChart>
           </ResponsiveContainer>
         </div>
@@ -1046,7 +1166,19 @@ export default function ExperimentCheckTab() {
   function renderAdditionalChannelsChart() {
     if (!results || !results.restSheets.length) return null;
     return (
-      <SectionCard title="Additional Channels" subtitle="Optional: select extra sensor sheets to inspect. Selected sheets are shown together in one graph.">
+      <SectionCard title="Additional Channels" subtitle="Optional: select extra sensor sheets to inspect. Selected sheets are shown together in one zoomable graph.">
+        <div className="hstack" style={{ gap: 16, alignItems: "center", flexWrap: "wrap", marginBottom: 10 }}>
+          <div className="hstack" style={{ gap: 8 }}>
+            <label>Zoom:</label>
+            <input type="range" min={1} max={10} step={1} value={extraZoom} onChange={(e) => setExtraZoom(parseInt(e.target.value, 10))} />
+            <span className="mono">{extraZoom}x</span>
+          </div>
+          <div className="hstack" style={{ gap: 8 }}>
+            <label>Scroll:</label>
+            <input type="range" min={0} max={1} step={0.01} value={extraScroll} onChange={(e) => setExtraScroll(parseFloat(e.target.value))} />
+          </div>
+          <div className="muted small">Window: {fmtDurationWindow(extraDomainStart - results.startMs)} -&gt; {fmtDurationWindow(extraDomainEnd - results.startMs)}</div>
+        </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
           {results.restSheets.map((name) => (
             <label key={name} style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
@@ -1056,17 +1188,20 @@ export default function ExperimentCheckTab() {
           ))}
         </div>
         {extraDefs.length ? (
-          <div style={{ width: "100%", height: 280 }}>
+          <div style={{ width: "100%", height: 360 }}>
             <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={extraChartData} margin={{ top: 8, right: 24, left: 40, bottom: 8 }}>
+              <LineChart data={segmentedExtraChart.data} margin={{ top: 12, right: 24, left: 42, bottom: 12 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                <XAxis dataKey="xMs" type="number" scale="time" domain={[results.startMs, results.endMs]} ticks={extraTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} />
+                <XAxis dataKey="xMs" type="number" scale="time" domain={[extraDomainStart, extraDomainEnd]} ticks={extraTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} allowDataOverflow />
                 <YAxis tick={{ fontSize: 11 }} tickFormatter={(value) => formatAxisTick(Number(value))} />
                 <Tooltip labelFormatter={(v) => fmtAbsTime(Number(v))} formatter={(val: any, name: string) => [val == null ? "-" : Number(val).toFixed(2), name]} />
                 <Legend />
-                {extraDefs.map((def) => (
-                  <Line key={def.key} dataKey={def.key} name={def.name} stroke={def.color} strokeWidth={1.8} dot={false} isAnimationActive={false} connectNulls={true} />
-                ))}
+                {extraDefs.flatMap((def) => {
+                  const segments = segmentedExtraChart.segmentsBySource.get(def.key) ?? [];
+                  return segments.map((segment, index) => (
+                    <Line key={segment.dataKey} dataKey={segment.dataKey} name={def.name} stroke={def.color} strokeWidth={1.8} dot={false} isAnimationActive={false} connectNulls={true} legendType={index === 0 ? "line" : "none"} />
+                  ));
+                })}
               </LineChart>
             </ResponsiveContainer>
           </div>
@@ -1241,8 +1376,8 @@ Use this tab to check whether the chamber conditions matched the planned protoco
             <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Experiment start</span>
             <input
               type="date"
-              value={startDT}
-              onChange={(e) => setStartDT(e.target.value)}
+              ref={startDateInputRef}
+              defaultValue={startDT}
               style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a" }}
             />
           </label>
@@ -1252,12 +1387,12 @@ Use this tab to check whether the chamber conditions matched the planned protoco
             <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Experiment end</span>
             <input
               type="date"
-              value={endDT}
-              onChange={(e) => setEndDT(e.target.value)}
+              ref={endDateInputRef}
+              defaultValue={endDT}
               style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a" }}
             />
             <span style={{ fontSize: 12, color: "#64748b" }}>
-              Probe files often contain extra days at the end, for example while cleaning out the room. Set this to the real experiment end date.
+              Probe files often contain extra days at the end, for example while cleaning out the room. Change the date to the real experiment end-date!
             </span>
           </label>
         </div>
@@ -1285,55 +1420,6 @@ Use this tab to check whether the chamber conditions matched the planned protoco
 
       {/* Rest / additional sheets */}
       {renderAdditionalChannelsChart()}
-      {Boolean(false) && (() => {
-        const checkedResults = results;
-        if (!checkedResults || checkedResults.restSheets.length === 0) return null;
-        const nonNullResults = checkedResults;
-        return (
-        <SectionCard
-          title="Additional Channels"
-          subtitle="Optional: select extra sensor sheets to inspect. Sensor data only — no protocol comparison."
-        >
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-            {nonNullResults.restSheets.map((name) => (
-              <label key={name} style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-                <input type="checkbox" checked={extraSheets.has(name)} onChange={() => toggleExtra(name)} />
-                <span>{name}</span>
-              </label>
-            ))}
-          </div>
-
-          {Array.from(extraSheets).map((name) => {
-            const ws = nonNullResults.workbook.Sheets[name];
-            if (!ws) return null;
-            const sensorPts = parseSheetToSeries(ws);
-            const chartData = Array.from(
-              { length: Math.ceil((nonNullResults.endMs - nonNullResults.startMs) / STEP_MS) + 1 },
-              (_, i) => {
-                const tMs = nonNullResults.startMs + i * STEP_MS;
-                return { xMs: tMs, sensor: avgSensorValue(sensorPts, tMs, MATCH_WINDOW_MS) };
-              },
-            );
-            return (
-              <div key={name} style={{ marginTop: 16 }}>
-                <div style={{ fontWeight: 600, color: "#0f172a", marginBottom: 4 }}>{name}</div>
-                <div style={{ width: "100%", height: 200 }}>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData} margin={{ top: 4, right: 24, left: 40, bottom: 4 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                      <XAxis dataKey="xMs" type="number" scale="time" domain={[nonNullResults.startMs, nonNullResults.endMs]} ticks={xTicks} tickFormatter={fmtAbsTime} tick={{ fontSize: 10 }} />
-                      <YAxis tick={{ fontSize: 11 }} />
-                      <Tooltip labelFormatter={(v) => fmtAbsTime(Number(v))} formatter={(val: any) => [val == null ? "–" : Number(val).toFixed(2), name]} />
-                      <Line dataKey="sensor" name={name} stroke="#0EA5E9" strokeWidth={1.5} dot={false} isAnimationActive={false} connectNulls={true} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </div>
-            );
-          })}
-        </SectionCard>
-        );
-      })()}
     </div>
   );
 }

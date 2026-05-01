@@ -1629,13 +1629,19 @@ export default function CitiesTab() {
   }
 
   return (
-    <div className="space-y-5">
+    <div className="cities-calibration-tab space-y-5">
+      <style>{`
+        .cities-calibration-tab,
+        .cities-calibration-tab :is(h1, h2, h3, h4, h5, h6, th, label, button, strong, b) {
+          font-weight: 400;
+        }
+      `}</style>
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.95fr)]">
           <div className="space-y-2">
-            <h3 className="text-lg font-semibold text-emerald-900">Cities Calibration</h3>
+            <h3 className="text-lg text-emerald-900">Cities Calibration</h3>
             <p>
-              THIS IS STILL UNDER CONSTRUCTION! Choose either <strong>Cities</strong> or <strong>PSI spectrometer</strong>,
+              (This is still under construction) Choose either Cities or PSI spectrometer,
               then upload that source file together with one room calibration CSV to fit a Faketron day profile.
             </p>
             {dataSource === "cities" ? (
@@ -1653,16 +1659,16 @@ export default function CitiesTab() {
             )}
             <p>
               For each time bin, the spectrum from the {dataSource === "cities" ? "city dataset" : "PSI file"} is the{" "}
-              <strong>target spectrum</strong>. The room calibration CSV contains measured spectra for each lamp channel at
+              target spectrum. The room calibration CSV contains measured spectra for each lamp channel at
               known dimming percentages, and the tool interpolates those measurements to estimate each channel from 0-100%.
             </p>
             <p>
               The fitter then chooses lamp percentages whose summed lamp output is as close as possible to that target
-              within the selected nm range. That summed indoor lamp output is the <strong>reconstructed spectrum</strong>,
+              within the selected nm range. That summed indoor lamp output is the reconstructed spectrum,
               and the remaining mismatch is shown as RMSE.
             </p>
             <p>
-              <strong>All cities:</strong> Madrid: Nofuentes, G. (n.d.). Dataset for "Overirradiance conditions and their
+              All cities: Madrid: Nofuentes, G. (n.d.). Dataset for "Overirradiance conditions and their
               impact on the spectral distribution at low- and mid-latitude sites", <em>Solar Energy</em>, Volume 259,
               2023, Pages 99-106, https://doi.org/10.1016/j.solener.2023.05.010.
               <a
@@ -1675,7 +1681,7 @@ export default function CitiesTab() {
               </a>
             </p>
             <p>
-              <strong>USA New Mexico:</strong> Global Horizontal Spectral irradiance dataset from Albuquerque - PV
+              USA New Mexico: Global Horizontal Spectral irradiance dataset from Albuquerque - PV
               Performance Modeling Collaborative (PVPMC). (n.d.). Retrieved April 24, 2026, from
               <a
                 href="https://pvpmc.sandia.gov/datasets/spectral-irradiance-dataset-from-albuquerque/"
@@ -1687,7 +1693,7 @@ export default function CitiesTab() {
               </a>
             </p>
             <p>
-              <strong>All other cities data comes from:</strong> SKYSPECTRA: an opensource data package for worldwide
+              All other cities data comes from: SKYSPECTRA: an opensource data package for worldwide
               spectral daylight is described there as an open-source data package of worldwide spectral daylight
               measurements collected from multiple long-term sites and specific experiments. For research use, cite:
               Balakrishnan, P., Diakite-Kortlever, A., Dumortier, D., Hernandez-Andres, J., Kenny, P., Maskarenj, M.,
@@ -1699,7 +1705,7 @@ export default function CitiesTab() {
 
           <div className="overflow-hidden rounded-2xl border border-emerald-200 bg-white shadow-sm shadow-emerald-100/60 self-start">
             <div className="border-b border-emerald-100 bg-gradient-to-br from-emerald-100 via-teal-50 to-white px-4 py-3">
-              <div className="text-sm font-semibold text-emerald-900">Available City Locations</div>
+              <div className="text-sm text-emerald-900">Available City Locations</div>
               <div className="mt-1 text-xs text-slate-600">
                 Hardcoded overview of the city datasets currently referenced in this tab.
               </div>
@@ -1708,14 +1714,14 @@ export default function CitiesTab() {
               <table className="min-w-full border-separate border-spacing-0 text-xs text-slate-700">
                 <thead className="sticky top-0 z-10">
                   <tr className="bg-slate-900 text-left text-[11px] uppercase tracking-[0.08em] text-white">
-                    <th className="px-3 py-2 font-semibold">Code</th>
-                    <th className="px-3 py-2 font-semibold">Location</th>
-                    <th className="px-3 py-2 font-semibold">Country</th>
-                    <th className="px-3 py-2 font-semibold">Timezone</th>
-                    <th className="px-3 py-2 font-semibold">Lat</th>
-                    <th className="px-3 py-2 font-semibold">Lon</th>
-                    <th className="px-3 py-2 font-semibold">Alt</th>
-                    <th className="px-3 py-2 font-semibold">Env</th>
+                    <th className="px-3 py-2">Code</th>
+                    <th className="px-3 py-2">Location</th>
+                    <th className="px-3 py-2">Country</th>
+                    <th className="px-3 py-2">Timezone</th>
+                    <th className="px-3 py-2">Lat</th>
+                    <th className="px-3 py-2">Lon</th>
+                    <th className="px-3 py-2">Alt</th>
+                    <th className="px-3 py-2">Env</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1725,11 +1731,11 @@ export default function CitiesTab() {
                       className={index % 2 === 0 ? "bg-white" : "bg-emerald-50/55"}
                     >
                       <td className="border-b border-slate-100 px-3 py-2 align-top">
-                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 font-semibold text-emerald-900">
+                        <span className="inline-flex rounded-full bg-emerald-100 px-2 py-0.5 text-emerald-900">
                           {row.code}
                         </span>
                       </td>
-                      <td className="border-b border-slate-100 px-3 py-2 font-medium text-slate-900">{row.name}</td>
+                      <td className="border-b border-slate-100 px-3 py-2 text-slate-900">{row.name}</td>
                       <td className="border-b border-slate-100 px-3 py-2">{row.country}</td>
                       <td className="border-b border-slate-100 px-3 py-2 font-mono text-[11px] text-slate-600">{row.timezone}</td>
                       <td className="border-b border-slate-100 px-3 py-2">{row.latitude}</td>
@@ -1751,10 +1757,10 @@ export default function CitiesTab() {
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
         <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 h-full">
-          <h4 className="font-semibold text-slate-900">1. Data Selection</h4>
+          <h4 className=" text-slate-900">1. Data Selection</h4>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Source</label>
+            <label className="block text-sm text-slate-700 mb-1">Source</label>
             <select
               className="w-full rounded border border-slate-300 p-2 text-sm"
               value={dataSource}
@@ -1766,7 +1772,7 @@ export default function CitiesTab() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">{primaryFileLabel}</label>
+            <label className="block text-sm text-slate-700 mb-1">{primaryFileLabel}</label>
             <input
               type="file"
               accept=".csv,text/csv,text/plain"
@@ -1792,7 +1798,7 @@ export default function CitiesTab() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">{monthFieldLabel}</label>
+            <label className="block text-sm text-slate-700 mb-1">{monthFieldLabel}</label>
             <select
               className="w-full rounded border border-slate-300 p-2 text-sm"
               value={selectedMonth ?? ""}
@@ -1812,7 +1818,7 @@ export default function CitiesTab() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Lamp calibration CSV</label>
+            <label className="block text-sm text-slate-700 mb-1">Lamp calibration CSV</label>
             <input
               type="file"
               accept=".csv,text/csv,text/plain"
@@ -1841,7 +1847,7 @@ export default function CitiesTab() {
             type="button"
             onClick={runCalibration}
             disabled={runningCalibration || parsingCityFile}
-            className="w-full rounded bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="w-full rounded bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-slate-400"
           >
             {runningCalibration ? "Running calibration..." : "Run Calibration"}
           </button>
@@ -1864,11 +1870,11 @@ export default function CitiesTab() {
         </div>
 
         <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-3 h-full">
-          <h4 className="font-semibold text-slate-900">2. Fit and Display</h4>
+          <h4 className=" text-slate-900">2. Fit and Display</h4>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Coverage</label>
+              <label className="block text-sm text-slate-700 mb-1">Coverage</label>
               <select
                 className="w-full rounded border border-slate-300 p-2 text-sm"
                 value={coverageMode}
@@ -1884,7 +1890,7 @@ export default function CitiesTab() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Spectrum View</label>
+              <label className="block text-sm text-slate-700 mb-1">Spectrum View</label>
               <select
                 className="w-full rounded border border-slate-300 p-2 text-sm"
                 value={spectrumView}
@@ -1903,7 +1909,7 @@ export default function CitiesTab() {
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nm min</label>
+              <label className="block text-sm text-slate-700 mb-1">Nm min</label>
               <input
                 type="number"
                 className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -1913,7 +1919,7 @@ export default function CitiesTab() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1">Nm max</label>
+              <label className="block text-sm text-slate-700 mb-1">Nm max</label>
               <input
                 type="number"
                 className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -1947,7 +1953,7 @@ export default function CitiesTab() {
           <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
               <div>
-                <h4 className="font-semibold text-slate-900">3. Spectral Viewer</h4>
+                <h4 className=" text-slate-900">3. Spectral Viewer</h4>
                 <div className="text-xs text-slate-500">
                   {result.selection.city} | {result.selection.monthName} | {result.room.id}
                 </div>
@@ -1971,8 +1977,8 @@ export default function CitiesTab() {
             {currentBin ? (
               <div className="grid grid-cols-1 gap-4 xl:grid-cols-[116px_minmax(0,1fr)]">
                 <div className="rounded border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 space-y-1 self-start">
-                  <div><strong>Time:</strong> {currentBin.timeOfDay}</div>
-                  <div><strong>RMSE:</strong> {currentBin.fit.rmse?.toFixed(4) ?? "-"}</div>
+                  <div>Time: {currentBin.timeOfDay}</div>
+                  <div>RMSE: {currentBin.fit.rmse?.toFixed(4) ?? "-"}</div>
                 </div>
 
                 <div className="min-w-0">
@@ -2035,7 +2041,7 @@ export default function CitiesTab() {
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-4 space-y-4">
-            <h4 className="font-semibold text-slate-900">4. Lamp Schedule</h4>
+            <h4 className=" text-slate-900">4. Lamp Schedule</h4>
             <ResponsiveContainer width="100%" height={320}>
               <BarChart data={scheduleData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -2080,8 +2086,47 @@ export default function CitiesTab() {
             </div>
           </div>
 
+          <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
+            <h4 className=" text-emerald-900">5. How the spectrum fitter works</h4>
+            <ol className="mt-3 grid list-decimal gap-3 pl-5 lg:grid-cols-2">
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                The target spectrum is the uploaded city or PSI spectrum for the selected time bin. The fit only uses
+                the selected wavelength window, for example 400-750 nm. City energy spectra are converted to photon
+                units before fitting; PSI spectra are already treated as photon input.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                The room calibration CSV is turned into a lookup table. For every lamp channel and every integer
+                percentage from 0 to 100, the tool builds a predicted channel spectrum on the same wavelength grid as
+                the target.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                For one time bin, the reconstructed spectrum is the sum of the chosen channel spectra:
+                <code className="ml-1">reconstructed[nm] = sum(channel_spectrum[channel][percent][nm])</code>.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                The search starts from the previous time bin's lamp percentages. For the first nonzero bin, the starting
+                point is 0% for every channel. This helps the fitted schedule change smoothly through the day.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                The fitter makes up to three sweeps over the lamp channels. During a channel step, all other channels
+                stay fixed while that one channel is tested at every integer percentage from 0 to 100.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3">
+                The percentage that gives the lowest squared error is selected:
+                <code className="mx-1">sum((reconstructed[nm] - target[nm])^2)</code>.
+                There is no extra wavelength weighting beyond the selected nm window.
+              </li>
+              <li className="rounded border border-emerald-100 bg-white/75 p-3 lg:col-span-2">
+                After the percentages are chosen, RMSE is calculated as
+                <code className="mx-1">sqrt(mean((reconstructed[nm] - target[nm])^2))</code>.
+                So this is a bounded discrete least-squares search over lamp percentages, not a closed-form regression
+                with unconstrained real-valued coefficients.
+              </li>
+            </ol>
+          </div>
+
           <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <h4 className="font-semibold text-slate-900 mb-3">5. Faketron Actions</h4>
+            <h4 className=" text-slate-900 mb-3">6. Faketron Actions</h4>
             <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-4 space-y-4">
               <div className="text-sm text-slate-700">
                 These settings are applied together with the fitted light schedule when you upload to the Faketron.
@@ -2090,15 +2135,15 @@ export default function CitiesTab() {
               </div>
 
               <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                Important: if the Editor tab is currently on another room, for example <strong>G4</strong>, pressing
-                <strong> Apply to Faketron</strong> must first switch the Editor room to the detected calibration room
-                <strong> {result.room.id}</strong>. Only after that room change can the fitted schedule be applied to the
+                Important: if the Editor tab is currently on another room, for example G4, pressing
+                 Apply to Faketron must first switch the Editor room to the detected calibration room
+                 {result.room.id}. Only after that room change can the fitted schedule be applied to the
                 correct protocol.
               </div>
 
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">CO2 constant (ppm)</label>
+                  <label className="block text-sm text-slate-700 mb-1">CO2 constant (ppm)</label>
                   <input
                     type="number"
                     className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2108,7 +2153,7 @@ export default function CitiesTab() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Humidity constant (%)</label>
+                  <label className="block text-sm text-slate-700 mb-1">Humidity constant (%)</label>
                   <input
                     type="number"
                     className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2118,7 +2163,7 @@ export default function CitiesTab() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Temperature mode</label>
+                  <label className="block text-sm text-slate-700 mb-1">Temperature mode</label>
                   <select
                     className="w-full rounded border border-slate-300 p-2 text-sm"
                     value={temperatureMode}
@@ -2136,7 +2181,7 @@ export default function CitiesTab() {
 
               {temperatureMode === "constant" ? (
                 <div className="max-w-xs">
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Temperature constant (°C)</label>
+                  <label className="block text-sm text-slate-700 mb-1">Temperature constant (°C)</label>
                   <input
                     type="number"
                     className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2152,7 +2197,7 @@ export default function CitiesTab() {
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Night minimum (°C)</label>
+                      <label className="block text-sm text-slate-700 mb-1">Night minimum (°C)</label>
                       <input
                         type="number"
                         className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2162,7 +2207,7 @@ export default function CitiesTab() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Day maximum (°C)</label>
+                      <label className="block text-sm text-slate-700 mb-1">Day maximum (°C)</label>
                       <input
                         type="number"
                         className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2172,7 +2217,7 @@ export default function CitiesTab() {
                     </div>
 
                     <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">Daily average (°C)</label>
+                      <label className="block text-sm text-slate-700 mb-1">Daily average (°C)</label>
                       <input
                         type="number"
                         className="w-full rounded border border-slate-300 p-2 text-sm"
@@ -2203,7 +2248,7 @@ export default function CitiesTab() {
               <button
                 type="button"
                 onClick={applyToFaketron}
-                className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-700"
+                className="rounded bg-slate-900 px-4 py-2 text-sm text-white hover:bg-slate-700"
               >
                 Apply to Faketron
               </button>
@@ -2214,3 +2259,5 @@ export default function CitiesTab() {
     </div>
   );
 }
+
+
