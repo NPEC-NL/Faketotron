@@ -2088,41 +2088,46 @@ export default function CitiesTab() {
 
           <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
             <h4 className=" text-emerald-900">5. How the spectrum fitter works</h4>
-            <ol className="mt-3 grid list-decimal gap-3 pl-5 lg:grid-cols-2">
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                The target spectrum is the uploaded city or PSI spectrum for the selected time bin. The fit only uses
-                the selected wavelength window, for example 400-750 nm. City energy spectra are converted to photon
-                units before fitting; PSI spectra are already treated as photon input.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                The room calibration CSV is turned into a lookup table. For every lamp channel and every integer
-                percentage from 0 to 100, the tool builds a predicted channel spectrum on the same wavelength grid as
-                the target.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                For one time bin, the reconstructed spectrum is the sum of the chosen channel spectra:
-                <code className="ml-1">reconstructed[nm] = sum(channel_spectrum[channel][percent][nm])</code>.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                The search starts from the previous time bin's lamp percentages. For the first nonzero bin, the starting
-                point is 0% for every channel. This helps the fitted schedule change smoothly through the day.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                The fitter makes up to three sweeps over the lamp channels. During a channel step, all other channels
-                stay fixed while that one channel is tested at every integer percentage from 0 to 100.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3">
-                The percentage that gives the lowest squared error is selected:
-                <code className="mx-1">sum((reconstructed[nm] - target[nm])^2)</code>.
-                There is no extra wavelength weighting beyond the selected nm window.
-              </li>
-              <li className="rounded border border-emerald-100 bg-white/75 p-3 lg:col-span-2">
-                After the percentages are chosen, RMSE is calculated as
-                <code className="mx-1">sqrt(mean((reconstructed[nm] - target[nm])^2))</code>.
-                So this is a bounded discrete least-squares search over lamp percentages, not a closed-form regression
-                with unconstrained real-valued coefficients.
-              </li>
-            </ol>
+            <div className="mt-3 grid gap-3 lg:grid-cols-3">
+              <div className="rounded border border-emerald-100 bg-white/75 p-3">
+                <div className="text-emerald-900">Input spectrum</div>
+                <p className="mt-2">
+                  Each time bin has a target spectrum, written here as <code>T[nm]</code>. Only wavelengths inside the
+                  selected nm window are used. City spectra in energy units are converted to photon units first; PSI
+                  spectra are handled as photon-unit input.
+                </p>
+              </div>
+
+              <div className="rounded border border-emerald-100 bg-white/75 p-3">
+                <div className="text-emerald-900">Reconstruction</div>
+                <p className="mt-2">
+                  The reconstructed spectrum <code>R[nm]</code> is the sum of all selected room-lamp channel spectra at
+                  their fitted percentages.
+                </p>
+              </div>
+
+              <div className="rounded border border-emerald-100 bg-white/75 p-3 lg:col-span-2">
+                <div className="text-emerald-900">How percentages are chosen</div>
+                <p className="mt-2">
+                  The search starts from the previous time bin's fitted percentages, or from 0% for every channel at
+                  the first nonzero bin. It makes up to three passes through the channels. During one channel step,
+                  all other channels stay fixed, that channel is tested at every whole-number percentage from 0 to 100,
+                  and the percentage with the lowest squared mismatch is kept:
+                  <code className="ml-1">sum_nm((R[nm] - T[nm])^2)</code>.
+                </p>
+              </div>
+
+              <div className="rounded border border-emerald-100 bg-white/75 p-3 lg:col-span-3">
+                <div className="text-emerald-900">RMSE</div>
+                <p className="mt-2">
+                  After the final percentages are selected, the residual at each wavelength is
+                  <code className="mx-1">R[nm] - T[nm]</code>. RMSE is
+                  <code className="mx-1">sqrt(mean_nm((R[nm] - T[nm])^2))</code>, so larger wavelength errors count more
+                  strongly because they are squared. Lower RMSE means the reconstructed lamp spectrum is closer to the
+                  target, within the limits of the available lamp channels and 0-100% integer percentage steps.
+                </p>
+              </div>
+            </div>
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-4">

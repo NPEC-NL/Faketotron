@@ -32,6 +32,7 @@ import { LeafButton } from "../LeafButton";
 type SensorPoint = { ts: number; value: number };
 type ChartRow = { xMs: number; protocol: number | null; sensor: number | null };
 type ProtocolGraphRow = { i: number; name: string; unit: string; series: XY[]; phaseStarts: number[]; xmax: number };
+type ProtocolTimingMode = "repeat24h" | "long";
 
 type ParamResult = {
   key: string;
@@ -123,6 +124,17 @@ function dateInputStartToMs(dateStr: string): number {
 
 function dateInputEndToMs(dateStr: string): number {
   return new Date(`${dateStr}T23:59:59.999Z`).getTime();
+}
+
+function timeInputToSeconds(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value.trim());
+  if (!match) return null;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (!Number.isInteger(hours) || !Number.isInteger(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+    return null;
+  }
+  return hours * HOUR_SECONDS + minutes * 60;
 }
 
 /** ms → "DD/MM HH:MM" for chart axis labels. */
@@ -608,6 +620,8 @@ export default function ExperimentCheckTab() {
   const [parsedWorkbook, setParsedWorkbook] = useState<XLSX.WorkBook | null>(null);
   const [startDT, setStartDT] = useState("");
   const [endDT, setEndDT] = useState("");
+  const [protocolTimingMode, setProtocolTimingMode] = useState<ProtocolTimingMode>("repeat24h");
+  const [protocolStartTime, setProtocolStartTime] = useState("00:00");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<CompareResults | null>(null);
@@ -690,8 +704,14 @@ export default function ExperimentCheckTab() {
       setError("Please upload sensor data, protocol, and lamp calibration files, and set start/end datetime.");
       return;
     }
+    const protocolStartSeconds = timeInputToSeconds(protocolStartTime);
+    if (protocolStartSeconds == null) {
+      setError("Please set the .fyt protocol start time as HH:MM.");
+      return;
+    }
     const startMs = dateInputStartToMs(selectedStartDT);
     const endMs   = dateInputEndToMs(selectedEndDT);
+    const protocolStartMs = startMs + protocolStartSeconds * 1000;
     if (endMs <= startMs) { setError("End datetime must be after start."); return; }
     setStartDT(selectedStartDT);
     setEndDT(selectedEndDT);
@@ -714,7 +734,6 @@ export default function ExperimentCheckTab() {
       }
 
       const parts: any[] = protocol?.sections?.[0]?.parts ?? [];
-      const protocolRepeat = Math.max(1, Number(protocol?.repeat ?? 1));
       const groupSeries = parts.map((g: any) => {
         const name = String(g["group-name"] ?? g.name ?? "");
         const out = sampleGroup(g);
@@ -723,7 +742,8 @@ export default function ExperimentCheckTab() {
       });
 
       const maxBase = Math.max(1, ...groupSeries.map((g) => g.baseDuration));
-      const totalProtocolSec = maxBase * protocolRepeat;
+      const isRepeat24h = protocolTimingMode === "repeat24h";
+      const protocolPeriodSec = isRepeat24h ? DAY_SECONDS : maxBase;
 
       await nextFrame();
       // --- Parse calibration ---
@@ -752,21 +772,39 @@ export default function ExperimentCheckTab() {
         return g.xy;
       }
 
+      function protocolTimeAt(tMs: number): number | null {
+        const elapsedSec = (tMs - protocolStartMs) / 1000;
+        if (elapsedSec < 0) return null;
+        if (isRepeat24h) return elapsedSec % protocolPeriodSec;
+        if (elapsedSec > maxBase) return null;
+        return elapsedSec;
+      }
+
       function protocolValueAt(protXY: XY[], tMs: number): number | null {
-        const tSec = (tMs - startMs) / 1000;
-        if (tSec < 0 || tSec > totalProtocolSec || !protXY.length) return null;
-        return yAt(protXY, tSec % maxBase);
+        if (!protXY.length) return null;
+        const tInProtocol = protocolTimeAt(tMs);
+        if (tInProtocol == null) return null;
+        return yAt(protXY, tInProtocol);
       }
 
       function protocolTimestamps(seriesList: XY[][]): number[] {
         const times = new Set<number>();
         seriesList.forEach((series) => {
-          series.forEach((point) => {
-            for (let repeatIndex = 0; repeatIndex < protocolRepeat; repeatIndex++) {
-              const tMs = startMs + (repeatIndex * maxBase + point.x) * 1000;
-              if (tMs >= startMs && tMs <= endMs) times.add(tMs);
+          if (isRepeat24h) {
+            const repeatCount = Math.max(1, Math.ceil((endMs - protocolStartMs) / DAY_MS) + 1);
+            for (let repeatIndex = 0; repeatIndex < repeatCount; repeatIndex++) {
+              series.forEach((point) => {
+                if (point.x > DAY_SECONDS) return;
+                const tMs = protocolStartMs + (repeatIndex * DAY_SECONDS + point.x) * 1000;
+                if (tMs >= startMs && tMs <= endMs) times.add(tMs);
+              });
             }
-          });
+          } else {
+            series.forEach((point) => {
+              const tMs = protocolStartMs + point.x * 1000;
+              if (tMs >= startMs && tMs <= endMs) times.add(tMs);
+            });
+          }
         });
         return Array.from(times).sort((a, b) => a - b);
       }
@@ -793,10 +831,9 @@ export default function ExperimentCheckTab() {
         const sensorByTime = new Map(rawSensor.map((point) => [point.ts, point.value]));
         const lightValueCache = new Map<number, number>();
         return times.map((tMs) => {
-          const tSec = (tMs - startMs) / 1000;
           let protVal: number | null = null;
-          if (tSec <= totalProtocolSec && lampGroups.length) {
-            const tInProto = tSec % maxBase;
+          const tInProto = protocolTimeAt(tMs);
+          if (tInProto != null && lampGroups.length) {
             const cacheKey = Math.round(tInProto * 1000) / 1000;
             const cached = lightValueCache.get(cacheKey);
             if (cached != null) {
@@ -1419,7 +1456,33 @@ Use this tab to check whether the chamber conditions matched the planned protoco
             </button>
           </label>
 
-          {/* Calibration — required */}
+          {/* Protocol timing */}
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Protocol timing</span>
+            <select
+              value={protocolTimingMode}
+              onChange={(e) => setProtocolTimingMode(e.target.value as ProtocolTimingMode)}
+              style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a" }}
+            >
+              <option value="repeat24h">24-hour protocol, repeat daily</option>
+              <option value="long">Long protocol, run once</option>
+            </select>
+          </label>
+
+          {/* Protocol start time */}
+          <label style={{ display: "grid", gap: 6 }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>.fyt start time</span>
+            <input
+              type="time"
+              value={protocolStartTime}
+              onChange={(e) => setProtocolStartTime(e.target.value)}
+              style={{ height: 40, padding: "0 12px", border: "1px solid #94a3b8", borderRadius: 10, background: "#f8fafc", color: "#0f172a" }}
+            />
+            <span style={{ fontSize: 12, color: "#64748b" }}>
+              Aligns the protocol to the sensor dates; applies to both repeat and long protocol files.
+            </span>
+          </label>
+
           <label style={{ display: "grid", gap: 6 }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: "#0f172a" }}>Lamp calibration (.csv)</span>
             <button
