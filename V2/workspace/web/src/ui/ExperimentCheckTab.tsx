@@ -14,7 +14,6 @@ import { sampleGroup } from "../utils/sampler";
 import type { XY } from "../utils/sampler";
 import {
   parseLampCalibrationCsv,
-  reconstructSpectrum,
   integrateSpectrum,
   convertSpectrumToUmol,
 } from "../utils/spectra";
@@ -64,6 +63,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const DAY_SECONDS = 24 * 60 * 60;
 const HOUR_SECONDS = 60 * 60;
 const DAY_WINDOW_STEP_SECONDS = 60;
+const CHART_POINT_BUDGET = 3000;
 const MAX_LINE_GAP_MS = 15 * 60 * 1000;
 const GAP_SEGMENT_MARKER = "__gapseg_";
 const SHARED_AXIS_NOTE = "Shared y-axis: most parameters are shown directly as intensity [%]. CO2 and temperature are divided by 10 on the graph, so all parameters can stay visible together on one overview without the larger CO2 and temperature values dominating the axis scale.";
@@ -191,6 +191,7 @@ function buildStandardChartData(params: ParamResult[], startMs: number, endMs: n
 }
 
 type LineSegment = { dataKey: string; sourceKey: string; segmentIndex: number };
+type LampPpfdCalibration = Record<string, number[]>;
 
 function segmentedDataKey(sourceKey: string, segmentIndex: number): string {
   return `${sourceKey}${GAP_SEGMENT_MARKER}${segmentIndex}`;
@@ -226,6 +227,32 @@ function splitLineGaps(data: Array<Record<string, any>>, sourceKeys: string[]) {
   });
 
   return { data: rows, segmentsBySource };
+}
+
+function downsampleRows<T>(rows: T[], maxRows = CHART_POINT_BUDGET): T[] {
+  if (rows.length <= maxRows) return rows;
+  const out: T[] = [];
+  const used = new Set<number>();
+  const last = rows.length - 1;
+  const step = last / Math.max(1, maxRows - 1);
+
+  for (let i = 0; i < maxRows; i++) {
+    const idx = i === maxRows - 1 ? last : Math.round(i * step);
+    if (!used.has(idx)) {
+      out.push(rows[idx]);
+      used.add(idx);
+    }
+  }
+  return out;
+}
+
+function prepareChartRows(data: Array<Record<string, any>>, sourceKeys: string[]) {
+  const segmented = splitLineGaps(data, sourceKeys);
+  return { data: downsampleRows(segmented.data), segmentsBySource: segmented.segmentsBySource };
+}
+
+function nextFrame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
 
 function colorForExtra(name: string, index: number): string {
@@ -468,6 +495,35 @@ function groupToChannelKey(name: string, room: RoomConfig): string | null {
   return null;
 }
 
+function buildLampPpfdCalibration(calData: LampCalibrationData, room: RoomConfig): LampPpfdCalibration {
+  const out: LampPpfdCalibration = {};
+  for (const ch of room.channels) {
+    out[ch.key] = (calData[ch.key] ?? []).map((spectrum) =>
+      integrateSpectrum(convertSpectrumToUmol(spectrum), 400, 700),
+    );
+  }
+  return out;
+}
+
+function ppfdAtPercent(levels: number[], pct: number): number {
+  if (!levels.length || pct <= 0) return 0;
+  if (pct >= 100) return levels[19] ?? levels[levels.length - 1] ?? 0;
+
+  const idx = pct / 5 - 1;
+  if (idx < 0) {
+    const val5 = levels[0] ?? 0;
+    const val10 = levels[1] ?? val5;
+    return Math.max(0, val5 - ((val10 - val5) / 5) * (5 - pct));
+  }
+
+  const lo = Math.floor(idx);
+  const hi = Math.ceil(idx);
+  const loVal = levels[lo] ?? 0;
+  const hiVal = levels[hi] ?? loVal;
+  if (lo === hi) return loVal;
+  return loVal * (1 - (idx - lo)) + hiVal * (idx - lo);
+}
+
 // ---------------------------------------------------------------------------
 // Sensor data parsing
 // ---------------------------------------------------------------------------
@@ -570,6 +626,7 @@ export default function ExperimentCheckTab() {
   const [dayIndex, setDayIndex] = useState(0);
   const startDateInputRef = useRef<HTMLInputElement | null>(null);
   const endDateInputRef = useRef<HTMLInputElement | null>(null);
+  const extraSheetCacheRef = useRef<Map<string, SensorPoint[]>>(new Map());
 
   const roomConfig = ROOM_CONFIGS[room];
 
@@ -585,6 +642,7 @@ export default function ExperimentCheckTab() {
       const f = await pickFile(".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       setSensorFileName(f.name);
       setSensorFileRef(f);
+      extraSheetCacheRef.current.clear();
       // Parse immediately to cache workbook and auto-fill date range.
       const wb = XLSX.read(new Uint8Array(await f.arrayBuffer()), { type: "array", cellDates: false });
       setParsedWorkbook(wb);
@@ -640,6 +698,7 @@ export default function ExperimentCheckTab() {
 
     setLoading(true);
     try {
+      await nextFrame();
       // --- Parse protocol ---
       let protocol: any;
       if (!protocolFileRef.name.toLowerCase().endsWith(".fyt")) {
@@ -656,14 +715,6 @@ export default function ExperimentCheckTab() {
 
       const parts: any[] = protocol?.sections?.[0]?.parts ?? [];
       const protocolRepeat = Math.max(1, Number(protocol?.repeat ?? 1));
-      const protocolRows: ProtocolGraphRow[] = parts.map((g: any, idx: number) => {
-        const out = sampleGroup(g);
-        const xmax = out.series.length ? out.series[out.series.length - 1].x : 1;
-        const name = (g && (g["group-name"] ?? g.name)) || (Array.isArray(g?.vars) && g.vars.length ? `Group ${idx + 1} (${g.vars[0]})` : `Group ${idx + 1}`);
-        const unit = g?.unit || "";
-        return { i: idx, name, unit, series: out.series, phaseStarts: out.phaseStarts, xmax };
-      });
-
       const groupSeries = parts.map((g: any) => {
         const name = String(g["group-name"] ?? g.name ?? "");
         const out = sampleGroup(g);
@@ -674,9 +725,12 @@ export default function ExperimentCheckTab() {
       const maxBase = Math.max(1, ...groupSeries.map((g) => g.baseDuration));
       const totalProtocolSec = maxBase * protocolRepeat;
 
+      await nextFrame();
       // --- Parse calibration ---
       const calData: LampCalibrationData = parseLampCalibrationCsv(await calibFileRef.text(), roomConfig);
+      const lampPpfdCal = buildLampPpfdCalibration(calData, roomConfig);
 
+      await nextFrame();
       // --- Use cached workbook or re-parse ---
       const wb = parsedWorkbook ?? XLSX.read(new Uint8Array(await sensorFileRef.arrayBuffer()), { type: "array", cellDates: false });
 
@@ -730,23 +784,34 @@ export default function ExperimentCheckTab() {
 
       function buildLIRows(): ChartRow[] {
         const lampGroups = groupSeries.filter((gs) => groupToParam(gs.name) === "lamp");
+        const lampProtocolGroups = lampGroups
+          .map((group) => ({ ...group, chKey: groupToChannelKey(group.name, roomConfig) }))
+          .filter((group): group is typeof group & { chKey: string } => !!group.chKey);
         const liSensor = standardSensor["LI"] ?? [];
         const rawSensor = liSensor.filter((point) => point.ts >= startMs && point.ts <= endMs);
         const times = rawSensor.length ? rawSensor.map((point) => point.ts) : protocolTimestamps(lampGroups.map((group) => group.xy));
         const sensorByTime = new Map(rawSensor.map((point) => [point.ts, point.value]));
+        const lightValueCache = new Map<number, number>();
         return times.map((tMs) => {
           const tSec = (tMs - startMs) / 1000;
           let protVal: number | null = null;
           if (tSec <= totalProtocolSec && lampGroups.length) {
             const tInProto = tSec % maxBase;
-            const percents: Record<string, number> = {};
-            for (const ch of roomConfig.channels) percents[ch.key] = 0;
-            for (const lg of lampGroups) {
-              const chKey = groupToChannelKey(lg.name, roomConfig);
-              if (chKey) percents[chKey] = Math.max(0, Math.min(100, yAt(lg.xy, tInProto) ?? 0));
+            const cacheKey = Math.round(tInProto * 1000) / 1000;
+            const cached = lightValueCache.get(cacheKey);
+            if (cached != null) {
+              protVal = cached;
+            } else {
+              const percents: Record<string, number> = {};
+              for (const lg of lampProtocolGroups) {
+                percents[lg.chKey] = Math.max(0, Math.min(100, yAt(lg.xy, tInProto) ?? 0));
+              }
+              protVal = roomConfig.channels.reduce(
+                (sum, ch) => sum + ppfdAtPercent(lampPpfdCal[ch.key] ?? [], percents[ch.key] ?? 0),
+                0,
+              );
+              lightValueCache.set(cacheKey, protVal);
             }
-            const spectrum = convertSpectrumToUmol(reconstructSpectrum(calData, percents));
-            protVal = integrateSpectrum(spectrum, 400, 700);
           }
           return { xMs: tMs, protocol: protVal, sensor: sensorByTime.get(tMs) ?? null };
         });
@@ -784,12 +849,12 @@ export default function ExperimentCheckTab() {
         },
       ];
 
-      setResults({ standard, restSheets: restSheetNames, workbook: wb, protocol, protocolRows, startMs, endMs });
+      setResults({ standard, restSheets: restSheetNames, workbook: wb, protocol, protocolRows: [], startMs, endMs });
       setStandardVisible(new Set(standard.filter((p) => p.hasProtocol || p.hasSensor).map((p) => p.key)));
       setStandardZoom(1);
       setStandardScroll(0);
       setStandardDayIndex(0);
-      setVisible(new Set(protocolRows.map((_, idx) => idx)));
+      setVisible(new Set());
       setZoom(1);
       setScroll(0);
       setHoverIdx(null);
@@ -840,29 +905,29 @@ export default function ExperimentCheckTab() {
   const standardDomainStart = results ? results.startMs + Math.min(standardScroll, 1) * Math.max(0, standardSpanMs - standardWindowMs) : 0;
   const standardDomainEnd = results ? Math.min(results.endMs, standardDomainStart + standardWindowMs) : standardDomainStart + standardWindowMs;
   const standardChartData = useMemo(
-    () => results ? buildStandardChartData(standardAvailable, results.startMs, results.endMs) : [],
-    [results, standardAvailable],
+    () => results ? buildStandardChartData(selectedStandard, standardDomainStart, standardDomainEnd) : [],
+    [results, selectedStandard, standardDomainStart, standardDomainEnd],
   );
   const standardLineKeys = useMemo(
-    () => standardAvailable.flatMap((p) => [
+    () => selectedStandard.flatMap((p) => [
       ...(p.hasProtocol ? [standardLineKey("protocol", p.key)] : []),
       ...(p.hasSensor ? [standardLineKey("sensor", p.key)] : []),
     ]),
-    [standardAvailable],
+    [selectedStandard],
   );
   const segmentedStandardChart = useMemo(
-    () => splitLineGaps(standardChartData, standardLineKeys),
+    () => prepareChartRows(standardChartData, standardLineKeys),
     [standardChartData, standardLineKeys],
   );
   const standardWindowTicks = results ? generateXTicks(standardDomainStart, standardDomainEnd) : [];
   const standardDayStartMs = results ? results.startMs + safeStandardDayIndex * DAY_MS : 0;
   const standardDayEndMs = results ? Math.min(results.endMs, standardDayStartMs + DAY_MS) : 0;
   const standardDayChartData = useMemo(
-    () => results ? buildStandardChartData(standardAvailable, standardDayStartMs, standardDayEndMs) : [],
-    [results, standardAvailable, standardDayStartMs, standardDayEndMs],
+    () => results ? buildStandardChartData(selectedStandard, standardDayStartMs, standardDayEndMs) : [],
+    [results, selectedStandard, standardDayStartMs, standardDayEndMs],
   );
   const segmentedStandardDayChart = useMemo(
-    () => splitLineGaps(standardDayChartData, standardLineKeys),
+    () => prepareChartRows(standardDayChartData, standardLineKeys),
     [standardDayChartData, standardLineKeys],
   );
   const standardDayTicks = results ? generateXTicks(standardDayStartMs, standardDayEndMs) : [];
@@ -880,26 +945,33 @@ export default function ExperimentCheckTab() {
     }),
     [extraSelected, results],
   );
+  const extraLineKeys = useMemo(() => extraDefs.map((def) => def.key), [extraDefs]);
   const extraChartData = useMemo(() => {
     if (!results || !extraDefs.length) return [];
     const parsed = extraDefs.map((def) => ({
       ...def,
-      points: results.workbook.Sheets[def.name] ? parseSheetToSeries(results.workbook.Sheets[def.name]) : [],
+      points: (() => {
+        const cached = extraSheetCacheRef.current.get(def.name);
+        if (cached) return cached;
+        const points = results.workbook.Sheets[def.name] ? parseSheetToSeries(results.workbook.Sheets[def.name]) : [];
+        extraSheetCacheRef.current.set(def.name, points);
+        return points;
+      })(),
     }));
     const byTime = new Map<number, Record<string, any>>();
     parsed.forEach((def) => {
       def.points.forEach((point) => {
-        if (point.ts < results.startMs || point.ts > results.endMs) return;
+        if (point.ts < extraDomainStart || point.ts > extraDomainEnd) return;
         const row = byTime.get(point.ts) ?? { xMs: point.ts };
         row[def.key] = point.value;
         byTime.set(point.ts, row);
       });
     });
     return Array.from(byTime.values()).sort((a, b) => Number(a.xMs) - Number(b.xMs));
-  }, [results, extraDefs]);
+  }, [results, extraDefs, extraDomainStart, extraDomainEnd]);
   const segmentedExtraChart = useMemo(
-    () => splitLineGaps(extraChartData, extraDefs.map((def) => def.key)),
-    [extraChartData, extraDefs],
+    () => prepareChartRows(extraChartData, extraLineKeys),
+    [extraChartData, extraLineKeys],
   );
   const extraTicks = results ? generateXTicks(extraDomainStart, extraDomainEnd) : [];
   const xTicks = results ? generateXTicks(results.startMs, results.endMs) : [];
