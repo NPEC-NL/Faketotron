@@ -59,7 +59,7 @@ export default function Welcome() {
                   <strong>Made by:</strong> Maarten Bots and Danna Shao
                 </p>
                 <p className="text-lg">
-                  <strong>Version:</strong> V3 (17-04-2026)
+                  <strong>Version:</strong> V3 (6-07-2026)
                 </p>
               </div>
             </div>

@@ -16,6 +16,7 @@ import * as Store from "../state/store";
 import { newProtocol, type ProfileKey, type Protocol } from "../profiles";
 import { detectRoomFromFilename, type RoomConfig } from "../utils/rooms";
 import { parseLampCalibrationCsv, safeNumber, spectrumAtPercent, toUmol, type SpectrumPoint } from "../utils/spectra";
+import marsImage from "../assets/mars.jpg";
 
 const useProto: any = (Store as any).useProto ?? (Store as any).useStore;
 
@@ -246,12 +247,32 @@ function durationPoint(value: number): [string, number] {
   return ["00:05:00", Number(clamped.toFixed(4))];
 }
 
+function inferScheduleLengthMinutes(rows: Array<{ timeBinMinutes: number }>): number {
+  const maxMinute = rows.reduce(
+    (max, row) => (Number.isFinite(row.timeBinMinutes) ? Math.max(max, row.timeBinMinutes) : max),
+    0,
+  );
+  return Math.max(24 * 60, Math.ceil((maxMinute + 5) / 5) * 5);
+}
+
 function minutesToDurationString(minutes: number): string {
   const totalSeconds = Math.max(1, Math.round((Number.isFinite(minutes) ? minutes : 0) * 60));
   const hours = Math.floor(totalSeconds / 3600);
   const mins = Math.floor((totalSeconds % 3600) / 60);
   const secs = totalSeconds % 60;
   return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+}
+
+function formatScheduleLength(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder === 0 ? `${hours}h` : `${hours}h ${remainder}m`;
+}
+
+function scheduleLengthToken(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder === 0 ? `${hours}h` : `${hours}h${remainder}m`;
 }
 
 function durationMinutesAtIndex(sortedBins: CalibrationBin[], index: number): number {
@@ -738,8 +759,9 @@ function expandTargetBins(rows: ParsedCityRow[]): TargetBin[] {
   if (sparse.length === 0) return [];
 
   const expanded: TargetBin[] = [];
+  const scheduleLengthMinutes = inferScheduleLengthMinutes(sparse);
   let cursor = 0;
-  for (let minute = 0; minute < 24 * 60; minute += 5) {
+  for (let minute = 0; minute < scheduleLengthMinutes; minute += 5) {
     while (cursor + 1 < sparse.length && sparse[cursor + 1].timeBinMinutes <= minute) cursor += 1;
 
     const first = sparse[0];
@@ -858,9 +880,10 @@ function expandPsiCalibrationBins(sparseBins: CalibrationBin[]): CalibrationBin[
   const first = sorted[0];
   const last = sorted[sorted.length - 1];
   const expanded: CalibrationBin[] = [];
+  const scheduleLengthMinutes = inferScheduleLengthMinutes(sorted);
   let cursor = 0;
 
-  for (let minute = 0; minute < 24 * 60; minute += 5) {
+  for (let minute = 0; minute < scheduleLengthMinutes; minute += 5) {
     if (minute < first.timeBinMinutes || minute > last.timeBinMinutes) {
       expanded.push(zeroCalibrationBin(minute, first));
       continue;
@@ -1080,8 +1103,8 @@ function findPartIndex(parts: any[], names: string[]): number {
   return parts.findIndex((part) => expected.has(getPartGroupName(part)));
 }
 
-function buildConstantPhase(value: number) {
-  return { type: "const", value, duration: "24:00:00" } as const;
+function buildConstantPhase(value: number, durationMinutes = 24 * 60) {
+  return { type: "const", value, duration: minutesToDurationString(durationMinutes) } as const;
 }
 
 function uvGroupNameForRoom(roomId?: string | null): "UVA" | "UVB" {
@@ -1096,7 +1119,7 @@ function buildTemperatureFollowPoints(
   avgTempC: number,
 ): Array<[string, number]> {
   if (bins.length === 0 || room.channels.length === 0) {
-    return [["24:00:00", Math.round(avgTempC * 10)]];
+    return [[minutesToDurationString(24 * 60), Math.round(avgTempC * 10)]];
   }
 
   const sortedBins = [...bins].sort((a, b) => a.timeBinMinutes - b.timeBinMinutes);
@@ -1127,6 +1150,7 @@ export default function CitiesTab() {
   const setProfile = useProto((s: any) => s.setProfile);
 
   const [dataSource, setDataSource] = useState<DataSourceKind>("cities");
+  const [showMarsExplanation, setShowMarsExplanation] = useState(false);
   const [cityFile, setCityFile] = useState<File | null>(null);
   const [cityData, setCityData] = useState<ParsedCityFile | null>(null);
   const [parsingCityFile, setParsingCityFile] = useState(false);
@@ -1477,7 +1501,7 @@ export default function CitiesTab() {
   function exportBins(kind: CoverageMode) {
     if (!result) return;
     const bins = kind === "expanded" ? result.expandedBins : result.sparseBins;
-    const suffix = kind === "expanded" ? "expanded-24h" : "sparse";
+    const suffix = kind === "expanded" ? `expanded-${scheduleLengthToken(inferScheduleLengthMinutes(result.expandedBins))}` : "sparse";
     downloadText(
       `${result.selection.city}_${result.selection.monthName}_${result.room.id}_${suffix}.csv`,
       binsToCsv(result, bins),
@@ -1542,6 +1566,8 @@ export default function CitiesTab() {
       ? structuredClone(targetProtocol)
       : JSON.parse(JSON.stringify(targetProtocol));
     const parts = next?.sections?.[0]?.parts ?? [];
+    const expandedScheduleMinutes = inferScheduleLengthMinutes(result.expandedBins);
+    const expandedScheduleLabel = formatScheduleLength(expandedScheduleMinutes);
     const missing = result.room.channels.filter((channel) =>
       parts.findIndex((part: any) => ((part?.["group-name"] || part?.name) ?? "") === channel.protocolGroupName) < 0,
     );
@@ -1585,14 +1611,14 @@ export default function CitiesTab() {
     parts[co2Index] = {
       ...parts[co2Index],
       "group-name": parts[co2Index]?.["group-name"] ?? parts[co2Index]?.name ?? "CO2",
-      phases: [buildConstantPhase(Math.round(co2Value))],
+      phases: [buildConstantPhase(Math.round(co2Value), expandedScheduleMinutes)],
     };
 
     const humidityIndex = findPartIndex(parts, ["Humidity"]);
     parts[humidityIndex] = {
       ...parts[humidityIndex],
       "group-name": parts[humidityIndex]?.["group-name"] ?? parts[humidityIndex]?.name ?? "Humidity",
-      phases: [buildConstantPhase(Math.round(humidityValue))],
+      phases: [buildConstantPhase(Math.round(humidityValue), expandedScheduleMinutes)],
     };
 
     const temperatureIndex = findPartIndex(parts, ["Temperature"]);
@@ -1601,7 +1627,7 @@ export default function CitiesTab() {
       "group-name": parts[temperatureIndex]?.["group-name"] ?? parts[temperatureIndex]?.name ?? "Temperature",
       phases:
         temperatureMode === "constant"
-          ? [buildConstantPhase(Math.round(constantTempC * 10))]
+          ? [buildConstantPhase(Math.round(constantTempC * 10), expandedScheduleMinutes)]
           : [{ type: "csv-import", points: buildTemperatureFollowPoints(result.expandedBins, result.room, nightMinC, dayMaxC, avgTempC) }],
     };
 
@@ -1609,7 +1635,7 @@ export default function CitiesTab() {
     parts[uvIndex] = {
       ...parts[uvIndex],
       "group-name": parts[uvIndex]?.["group-name"] ?? parts[uvIndex]?.name ?? targetUvGroupName,
-      phases: [buildConstantPhase(Math.round(uvValue))],
+      phases: [buildConstantPhase(Math.round(uvValue), expandedScheduleMinutes)],
     };
 
     next.sections[0].parts = parts.map((part: any) =>
@@ -1623,8 +1649,8 @@ export default function CitiesTab() {
     setError("");
     window.alert(
       previousProfile && previousProfile !== targetProfile
-        ? `Applied to Faketron for ${result.room.id}. The Editor room was first switched from ${previousProfile} to ${targetProfile}, and only after that the fitted 24h protocol and control settings were written into the protocol.`
-        : `Applied to Faketron for ${result.room.id}. The Editor room already matched ${targetProfile}, so the fitted 24h protocol and control settings were written directly into that room protocol.`,
+        ? `Applied to Faketron for ${result.room.id}. The Editor room was first switched from ${previousProfile} to ${targetProfile}, and only after that the fitted ${expandedScheduleLabel} protocol and control settings were written into the protocol.`
+        : `Applied to Faketron for ${result.room.id}. The Editor room already matched ${targetProfile}, so the fitted ${expandedScheduleLabel} protocol and control settings were written directly into that room protocol.`,
     );
   }
 
@@ -1635,19 +1661,79 @@ export default function CitiesTab() {
         .cities-calibration-tab :is(h1, h2, h3, h4, h5, h6, th, label, button, strong, b) {
           font-weight: 400;
         }
+        .cities-mars-button {
+          background-image: url(${marsImage});
+          background-position: center;
+          background-repeat: no-repeat;
+          background-size: 118%;
+        }
       `}</style>
       <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4 text-sm text-slate-700">
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.95fr)]">
+        <div className="mb-4 flex items-center justify-start gap-3">
+          <span className="text-sm text-emerald-900">Click on Mars for information</span>
+          <button
+            type="button"
+            aria-label={showMarsExplanation ? "Show cities calibration explanation" : "Show Mars explanation"}
+            aria-pressed={showMarsExplanation}
+            title={showMarsExplanation ? "Cities" : "Mars"}
+            onClick={() => setShowMarsExplanation((current) => !current)}
+            className="cities-mars-button h-24 w-24 rounded-full bg-transparent outline-none transition-transform hover:scale-105 focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-50"
+          />
+        </div>
+
+        {showMarsExplanation ? (
+          <div className="space-y-3 text-slate-800">
+            <h3 className="text-lg text-emerald-900">Mars</h3>
+            <p>
+              Download the Mars profile files:{" "}
+              <a
+                href="https://drive.google.com/drive/u/1/folders/1hWVF0uhcWfi7oQFZa7kTrJMC1oHYjyh7"
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-700 underline"
+              >
+                https://drive.google.com/drive/u/1/folders/1hWVF0uhcWfi7oQFZa7kTrJMC1oHYjyh7
+              </a>
+            </p>
+            <p>
+              The Mars profiles are based on simulated sunlight at the Martian surface. Mars is farther from the Sun than Earth, so it generally receives less sunlight. The amount and colour of the light also change with the position of Mars in its orbit, the time of day and the amount of dust in the atmosphere.
+            </p>
+            <p>
+              The spectra were calculated using the COMIMART model and are not continuous measurements made on Mars. The dataset includes total direct and diffuse light from 300–830 nm, at 5 nm intervals. It contains different Sun angles and dust levels and assumes a location at the Martian equator during the northern spring equinox. These spectra are used to create one representative Martian day of approximately 24 hours and 40 minutes, divided into 5-minute bins.
+            </p>
+            <p>
+              Dustiness is described using the atmospheric opacity value Tau. A low Tau represents relatively clear conditions, while a high Tau represents a dustier atmosphere. Increasing dust generally reduces the light intensity and shifts the spectrum towards relatively more red light. The available profiles include clear conditions (Tau 0.3), moderate dust (Tau 1.1), a dust storm (Tau 4.1) and extreme dust conditions (Tau 8.1).
+            </p>
+            <p>
+              An additional profile represents an afternoon dust storm. It starts with clear conditions in the morning, gradually increases to dust-storm conditions between 12:00 and 14:00, remains dusty until 16:30, and then gradually decreases to moderate dust conditions. The spectra are interpolated between the available Tau values so that the changes occur gradually rather than suddenly.
+            </p>
+            <p>
+              COMIMART showed good agreement with the DISORT radiation model and with a small set of rover-based Mars light spectra. However, this is only partial validation because no complete measured spectrum is available across 300–830 nm for a full Martian day.
+            </p>
+            <p>
+              Melgosa, M., Hernández-Andrés, J., Sánchez-Marañón, M., Cuadros, J., &amp; Vicente-Retortillo, Á. (2024). Some Approaches for Light and Color on the Surface of Mars. Applied Sciences (Switzerland), 14(23), 10812.{" "}
+              <a
+                href="https://doi.org/10.3390/app142310812"
+                target="_blank"
+                rel="noreferrer"
+                className="text-emerald-700 underline"
+              >
+                https://doi.org/10.3390/app142310812
+              </a>
+            </p>
+          </div>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(340px,0.95fr)]">
           <div className="space-y-2">
             <h3 className="text-lg text-emerald-900">Cities Calibration</h3>
             <p>
-              (This is still under construction) Choose either Cities or PSI spectrometer,
+              Choose either Cities or PSI spectrometer,
               then upload that source file together with one room calibration CSV to fit a Faketron day profile.
             </p>
             {dataSource === "cities" ? (
               <p>
-                The city CSV contains one average 24-hour day for one city, split into 5-minute bins, for the month you
-                select here. When available, the tool automatically uses the
+                The city CSV contains one average day or sol for one location, split into 5-minute bins, for the month
+                or representative profile you select here. When available, the tool automatically uses the
                 <code className="mx-1">spectral_horizontal_irradiance</code>
                 slice from that file.
               </p>
@@ -1752,7 +1838,8 @@ export default function CitiesTab() {
               </table>
             </div>
           </div>
-        </div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 items-stretch">
@@ -1880,12 +1967,12 @@ export default function CitiesTab() {
                 value={coverageMode}
                 onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setCoverageMode(event.target.value as CoverageMode)}
               >
-                <option value="expanded">Expanded 24h</option>
+                <option value="expanded">Expanded schedule</option>
                 <option value="sparse">Sparse observed bins</option>
               </select>
               <div className="mt-1 text-xs text-slate-500">
                 Sparse shows only the measured bins from the uploaded {dataSource === "cities" ? "city CSV" : "PSI file"}.
-                Expanded 24h fills the full day and is used for preview, export, and apply.
+                Expanded schedule fills the full uploaded day or sol and is used for preview, export, and apply.
               </div>
             </div>
 
@@ -2135,7 +2222,7 @@ export default function CitiesTab() {
             <div className="mb-4 rounded border border-slate-200 bg-slate-50 p-4 space-y-4">
               <div className="text-sm text-slate-700">
                 These settings are applied together with the fitted light schedule when you upload to the Faketron.
-                CO2, Humidity, and {uvGroupName} are written as constant 24-hour phases. Temperature can be constant
+                CO2, Humidity, and {uvGroupName} are written as constant phases matching the fitted schedule duration. Temperature can be constant
                 as well, or it can follow the average light-intensity trend.
               </div>
 
@@ -2174,7 +2261,7 @@ export default function CitiesTab() {
                     value={temperatureMode}
                     onChange={(event: React.ChangeEvent<HTMLSelectElement>) => setTemperatureMode(event.target.value as TemperatureMode)}
                   >
-                    <option value="constant">Constant 24h</option>
+                    <option value="constant">Constant schedule</option>
                     <option value="follow-light">Follow average light intensity</option>
                   </select>
                 </div>
@@ -2248,7 +2335,7 @@ export default function CitiesTab() {
                 onClick={() => exportBins("expanded")}
                 className="rounded border border-slate-300 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50"
               >
-                Export Expanded 24h CSV
+                Export Expanded CSV
               </button>
               <button
                 type="button"
@@ -2264,5 +2351,3 @@ export default function CitiesTab() {
     </div>
   );
 }
-
-

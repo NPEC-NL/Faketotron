@@ -3,6 +3,14 @@
 # Faketotron
 a mock Fytotron Client protocol editor and viewer.
 
+# Terminal update command:
+cd C:\....\NPEC_Faketron\V2\workspace
+pnpm install
+pnpm --filter faketotron-v2-core build
+pnpm --filter faketotron-v2-web build
+Copy-Item .\web\dist\index.html C:\...\NPEC_Faketron\Wageningen_Faketron.html -Force
+
+
 ## Limitations & Practical Recommendations
 To ensure reliable operation and prevent damage to the chamber hardware, please review the following limitations and best practices before running long or complex protocols.
 
