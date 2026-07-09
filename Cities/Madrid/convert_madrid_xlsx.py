@@ -63,7 +63,7 @@ SUN_INCLUDED = "TRUE"
 MW_TO_W = 1 / 1000.0
 
 # Uniform scaling applied to exported spectral irradiance values.
-OUTPUT_SCALE_FACTOR = 1 #0.45
+OUTPUT_SCALE_FACTOR = 1 
 
 # Output wavelength grid (nm)
 OUTPUT_WAVELENGTHS_NM: list[float] = np.arange(380, 785, 5, dtype=float).tolist()

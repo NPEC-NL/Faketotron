@@ -53,7 +53,7 @@ SUN_INCLUDED = "TRUE"
 OUTPUT_WAVELENGTHS_NM: list[float] = np.arange(380, 785, 5, dtype=float).tolist()
 
 # Uniform scaling applied to exported spectral irradiance values.
-OUTPUT_SCALE_FACTOR = 1 #0.65
+OUTPUT_SCALE_FACTOR = 1 
 
 BIN_MINUTES = 5
 
